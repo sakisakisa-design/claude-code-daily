@@ -32,7 +32,7 @@
 | 组件 | 用途 | 必选 |
 |------|------|------|
 | Claude Code CLI | 核心，跑模型 | 是 |
-| Claude Max 订阅 | Opus 模型额度 | 是（或 API key） |
+| Claude Max 订阅 | Opus 模型额度（Telegram Channel 必须订阅，不支持 API key） | 是 |
 | CLAUDE.md | 行为规则和上下文 | 是 |
 | Telegram Channel | Telegram 聊天 | 二选一 |
 | WeChat Channel | 微信聊天 | 二选一 |
@@ -83,6 +83,36 @@ cd ~/claude-workspace
 ### 6. 后台运行 + 自动重启
 
 - [后台运行指南](docs/background-running.md)
+
+## 为什么要跑两个 Session
+
+推荐同时运行两个 Claude Code 实例（比如一个接 Telegram、一个接微信），除了多渠道之外还有一个关键原因：**互为 Watchdog**。
+
+Claude Code 在无人值守运行时，偶尔会卡在权限确认上不动。如果只有一个 session，你只能 SSH 上去手动处理。两个 session 互相监控，一个卡住了可以让另一个去终端操作恢复。
+
+详见 [后台运行指南](docs/background-running.md) 中的多实例配置。
+
+## 权限配置（重要）
+
+Claude Code 默认每次调用工具都需要用户手动批准。24 小时无人值守运行时，这会导致 Claude 频繁卡住等待确认。
+
+**推荐配置**：在 `settings.json` 中开启 `bypassPermissions` 或至少把常用工具加入 allow 列表：
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_telegram_telegram__reply",
+      "mcp__plugin_telegram_telegram__react",
+      "mcp__wechat__wechat_reply",
+      "mcp__wechat__wechat_send_image"
+    ],
+    "defaultMode": "bypassPermissions"
+  }
+}
+```
+
+> **注意**：`bypassPermissions` 会让 Claude 可以自由执行 bash 命令、读写文件等。如果你不放心，可以只把必要的 Channel 回复工具加入 allow 列表，其他保持默认。但要做好偶尔卡住的心理准备——这时候如果你有第二个 session，可以让它去帮忙 allow。
 
 ## 常见问题
 

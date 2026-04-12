@@ -2,9 +2,12 @@
 
 Telegram 是 Claude Code 官方支持的 Channel，通过 plugin 加载，配置最简单。
 
+> **重要**：官方 Telegram Channel 插件 **仅支持 Claude 订阅用户**（Pro / Max），不支持 API key 登录。这是官方插件的限制，连 Anthropic 自己的 API 都无法使用。如果你只有 API key，需要自己手搓一个 Telegram MCP server 或 bot，社区也有一些成品轮子可以找找。
+
 ## 前置条件
 
 - 已安装 Claude Code CLI
+- **Claude Pro 或 Max 订阅**（API key 不行）
 - 一个 Telegram Bot Token（从 @BotFather 获取）
 
 ## 步骤

@@ -130,6 +130,88 @@ curl -s "http://localhost:5230/api/v1/memos?filter=content_search%3D%3D%22关键
 
 两者可以同时使用，不冲突。Auto Memory 适合存 Claude 自动学到的东西，Memos 适合存你主动要求记录的内容。
 
+## Hook：自动检索知识库
+
+可以配置一个 `UserPromptSubmit` hook，让 Claude 每次收到消息时自动从 Memos 检索相关内容，作为上下文注入。
+
+### 1. 创建检索脚本
+
+创建 `~/claude-workspace/scripts/query_kb.sh`：
+
+```bash
+#!/bin/bash
+# 知识库检索入口
+# Hook 模式: 从 stdin 读取 JSON，提取 prompt 字段
+# 手动模式: query_kb.sh "关键词"
+
+TOP_K="${2:-3}"
+
+if [ -n "$1" ]; then
+    QUERY="$1"
+else
+    INPUT=$(cat)
+    QUERY=$(echo "$INPUT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('prompt',''))" 2>/dev/null)
+fi
+
+if [ -z "$QUERY" ]; then
+    echo "[知识库检索结果] 无查询内容"
+    exit 0
+fi
+
+# 简单实现：直接用 Memos 的内容搜索
+ENCODED=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$QUERY'))")
+RESULT=$(curl -s "http://localhost:5230/api/v1/memos?filter=content_search%3D%3D%22${ENCODED}%22&pageSize=${TOP_K}" \
+  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
+  -H "Accept: application/json" 2>/dev/null)
+
+# 提取内容摘要
+CONTENT=$(echo "$RESULT" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    memos = data.get('memos', [])
+    if not memos:
+        print('[知识库检索结果] 未找到相关内容')
+    else:
+        for m in memos:
+            snippet = m.get('snippet', m.get('content', '')[:100])
+            print(f'- {snippet}')
+except:
+    print('[知识库检索结果] 检索失败')
+" 2>/dev/null)
+
+echo "$CONTENT"
+```
+
+```bash
+chmod +x ~/claude-workspace/scripts/query_kb.sh
+```
+
+> 上面是最简实现，直接用 Memos API 的文本搜索。如果需要更精准的语义检索，可以加一层 embedding 向量数据库（如 chromadb）做 RAG。
+
+### 2. 在 settings.json 中注册 hook
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/claude-workspace/scripts/query_kb.sh",
+            "timeout": 30,
+            "statusMessage": "检索知识库..."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+这样每次收到消息，Claude 会先检索 Memos 中的相关记忆，检索结果会作为上下文附加在消息中。
+
 ## 注意事项
 
 - Memos 的 filter 使用 CEL 语法，搜 tag 用 `"tagname" in tags`，不要用 `content_search` 搜 tag
