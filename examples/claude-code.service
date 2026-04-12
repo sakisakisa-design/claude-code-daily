@@ -1,0 +1,30 @@
+[Unit]
+Description=Claude Code Daily
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+Environment="PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/home/ubuntu"
+# 如果需要代理：
+# Environment="HTTPS_PROXY=http://127.0.0.1:7890"
+# Environment="HTTP_PROXY=http://127.0.0.1:7890"
+# 如果是第二个实例，使用独立 config：
+# Environment="CLAUDE_CONFIG_DIR=/home/ubuntu/.claude-2"
+WorkingDirectory=/home/ubuntu/claude-workspace
+
+ExecStartPre=/bin/mkdir -p /tmp/tmux-claude
+ExecStartPre=/bin/chmod 700 /tmp/tmux-claude
+ExecStart=/home/ubuntu/claude-workspace/scripts/claude-code-launcher.sh
+
+ExecStop=/bin/sh -c 'tmux -S /tmp/tmux-claude/default send-keys -t claude-code C-c 2>/dev/null || true'
+ExecStop=/bin/sleep 1
+ExecStop=/bin/sh -c 'tmux -S /tmp/tmux-claude/default kill-session -t claude-code 2>/dev/null || true'
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

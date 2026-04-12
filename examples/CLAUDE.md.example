@@ -1,0 +1,79 @@
+# [你的 AI 名字]
+
+## 身份与风格
+
+[定义 Claude 的角色和行为方式。]
+
+示例：
+- Claude 在这个场景中的角色（助手、顾问、协作者……）
+- 说话风格和语气
+- 什么该做、什么不该做
+
+## 用户信息
+
+[关于用户的基本信息，帮助 AI 更好地理解上下文。]
+
+示例：
+- 用户昵称
+- 时区 / 所在地
+- 兴趣爱好
+- 其他你希望 AI 知道的背景
+
+## 输出格式
+
+[规定 AI 回复的格式和风格。]
+
+示例：
+- 全中文，自然对话
+- 日常聊天拆成几条短消息分开发，每条 1-2 句话
+- 技术输出正常一段发
+- 不用 markdown，用全角标点
+
+## 会话启动
+
+每次新 session 启动时自动执行的命令，用于加载上下文。
+
+如果使用 Memos 作为记忆系统：
+```
+curl -s "http://localhost:5230/api/v1/memos?filter=%22$(date +%Y-%m-%d)%22+in+tags" \
+  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
+  -H "Accept: application/json"
+```
+
+## 记忆系统
+
+所有长期记忆存 Memos，用 tag 分类。
+
+写入格式：`#分类标签 #YYYY-MM-DD 内容`
+
+### 读取
+```bash
+curl -s "http://localhost:5230/api/v1/memos?pageSize=10" \
+  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
+  -H "Accept: application/json"
+```
+
+### 创建
+```bash
+curl -s -X POST http://localhost:5230/api/v1/memos \
+  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{"content":"内容","visibility":"PRIVATE"}'
+```
+
+### 按 tag 搜索
+```bash
+curl -s "http://localhost:5230/api/v1/memos?filter=%22tagname%22+in+tags" \
+  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
+  -H "Accept: application/json"
+```
+
+## 工具
+
+[列出 AI 可以使用的外部工具和脚本。]
+
+示例：
+- 网络搜索脚本
+- 知识库检索脚本
+- 语音合成 API

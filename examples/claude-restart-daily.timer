@@ -1,0 +1,9 @@
+[Unit]
+Description=Restart Claude Code sessions daily at 4:00 AM
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

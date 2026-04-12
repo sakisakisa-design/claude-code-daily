@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily restart of Claude Code sessions
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash -c 'systemctl restart claude-code.service && echo "$(date) Session restarted" >> /tmp/claude-restart-daily.log'
