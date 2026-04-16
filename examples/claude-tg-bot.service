@@ -1,0 +1,25 @@
+[Unit]
+Description=Claude Code Telegram Bot (API)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+Environment="PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/home/ubuntu"
+WorkingDirectory=/home/ubuntu/claude-code-telegram
+
+ExecStartPre=/bin/mkdir -p /tmp/tmux-claude
+ExecStartPre=/bin/chmod 700 /tmp/tmux-claude
+ExecStart=/home/ubuntu/claude-workspace/scripts/python-bot-launcher.sh
+
+ExecStop=/bin/sh -c 'tmux -S /tmp/tmux-claude/default send-keys -t python-tg-bot C-c 2>/dev/null || true'
+ExecStop=/bin/sleep 1
+ExecStop=/bin/sh -c 'tmux -S /tmp/tmux-claude/default kill-session -t python-tg-bot 2>/dev/null || true'
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

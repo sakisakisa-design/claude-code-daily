@@ -20,11 +20,15 @@ systemd service → launcher.sh → tmux session → claude CLI
 mkdir -p ~/claude-workspace/scripts
 ```
 
+根据你的 Telegram 接入方式，选择对应的启动脚本。
+
+### 方式 A：官方 Channel 插件（需要订阅）
+
 创建 `~/claude-workspace/scripts/claude-code-launcher.sh`：
 
 ```bash
 #!/bin/bash
-# Claude Code 启动脚本
+# Claude Code 启动脚本 — 官方 Telegram Channel
 
 TMUX_SOCK="/tmp/tmux-claude/default"
 TMUX_SESSION="claude-code"
@@ -32,7 +36,6 @@ LOG_FILE="/tmp/claude-launcher.log"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
-# 防止 tmux 嵌套冲突
 unset TMUX
 
 log "=== Claude Code Launcher ==="
@@ -40,24 +43,16 @@ log "=== Claude Code Launcher ==="
 mkdir -p /tmp/tmux-claude
 chmod 700 /tmp/tmux-claude
 
-# 清理旧 session
 tmux -S "$TMUX_SOCK" kill-session -t "$TMUX_SESSION" 2>/dev/null
 sleep 1
 
-# 设置环境
 export PATH="$HOME/.bun/bin:$HOME/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export HOME="/home/ubuntu"
 
 log "Starting Claude Code..."
 
-# 启动 Claude Code（根据你的 channel 选择参数）
-# Telegram:
 tmux -S "$TMUX_SOCK" new-session -d -s "$TMUX_SESSION" -c ~/claude-workspace \
   claude --model claude-opus-4-6 --effort max --channels plugin:telegram@claude-plugins-official
-
-# 或 WeChat:
-# tmux -S "$TMUX_SOCK" new-session -d -s "$TMUX_SESSION" -c ~/claude-workspace \
-#   claude --model claude-opus-4-6 --effort max --dangerously-load-development-channels server:wechat
 
 sleep 2
 
@@ -67,7 +62,6 @@ else
     log "WARNING: Session did not start"
 fi
 
-# 保持脚本运行直到 tmux session 结束
 while tmux -S "$TMUX_SOCK" has-session -t "$TMUX_SESSION" 2>/dev/null; do
     sleep 5
 done
@@ -76,8 +70,64 @@ log "Session ended, exiting"
 exit 0
 ```
 
+### 方式 B：Python Bot（用 API）
+
+创建 `~/claude-workspace/scripts/python-bot-launcher.sh`：
+
+```bash
+#!/bin/bash
+# Python Telegram Bot 启动脚本 — API 方案
+
+TMUX_SOCK="/tmp/tmux-claude/default"
+TMUX_SESSION="python-tg-bot"
+LOG_FILE="/tmp/python-bot-launcher.log"
+BOT_DIR="$HOME/claude-code-telegram"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+unset TMUX
+
+log "=== Python TG Bot Launcher ==="
+
+mkdir -p /tmp/tmux-claude
+chmod 700 /tmp/tmux-claude
+
+tmux -S "$TMUX_SOCK" kill-session -t "$TMUX_SESSION" 2>/dev/null
+sleep 1
+
+export PATH="$HOME/.bun/bin:$HOME/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export HOME="/home/ubuntu"
+
+log "Starting Python TG bot..."
+
+# 如果使用兼容 API（中转站等），在这里设置 ANTHROPIC_BASE_URL
+# export ANTHROPIC_BASE_URL=http://你的中转地址
+
+tmux -S "$TMUX_SOCK" new-session -d -s "$TMUX_SESSION" -c "$BOT_DIR" \
+  "cd $BOT_DIR && source venv/bin/activate && python -m src.main 2>&1 | tee -a /tmp/claude-tg-bot.log"
+
+sleep 3
+
+if tmux -S "$TMUX_SOCK" has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    log "Python TG bot started successfully"
+else
+    log "WARNING: Python TG bot did not start"
+fi
+
+while tmux -S "$TMUX_SOCK" has-session -t "$TMUX_SESSION" 2>/dev/null; do
+    sleep 5
+done
+
+log "Python TG bot ended, exiting"
+exit 0
+```
+
+### 通用操作
+
 ```bash
 chmod +x ~/claude-workspace/scripts/claude-code-launcher.sh
+# 或
+chmod +x ~/claude-workspace/scripts/python-bot-launcher.sh
 ```
 
 ### WeChat 特殊处理
@@ -92,10 +142,14 @@ tmux -S "$TMUX_SOCK" send-keys -t "$TMUX_SESSION" Enter
 
 ## 2. 创建 systemd 服务
 
+根据你的接入方式选择对应的 service 文件。
+
+### 方式 A：官方 Channel 插件
+
 ```bash
 sudo tee /etc/systemd/system/claude-code.service << 'EOF'
 [Unit]
-Description=Claude Code Daily
+Description=Claude Code Daily (Official Channel)
 After=network.target
 
 [Service]
@@ -122,24 +176,69 @@ WantedBy=multi-user.target
 EOF
 ```
 
-启用并启动：
+### 方式 B：Python Bot
+
+```bash
+sudo tee /etc/systemd/system/claude-tg-bot.service << 'EOF'
+[Unit]
+Description=Claude Code Telegram Bot (API)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+Environment="PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/home/ubuntu"
+WorkingDirectory=/home/ubuntu/claude-code-telegram
+
+ExecStartPre=/bin/mkdir -p /tmp/tmux-claude
+ExecStartPre=/bin/chmod 700 /tmp/tmux-claude
+ExecStart=/home/ubuntu/claude-workspace/scripts/python-bot-launcher.sh
+
+ExecStop=/bin/sh -c 'tmux -S /tmp/tmux-claude/default send-keys -t python-tg-bot C-c 2>/dev/null || true'
+ExecStop=/bin/sleep 1
+ExecStop=/bin/sh -c 'tmux -S /tmp/tmux-claude/default kill-session -t python-tg-bot 2>/dev/null || true'
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+### 启用并启动
 
 ```bash
 sudo systemctl daemon-reload
+
+# 官方 Channel：
 sudo systemctl enable claude-code.service
 sudo systemctl start claude-code.service
+
+# 或 Python Bot：
+sudo systemctl enable claude-tg-bot.service
+sudo systemctl start claude-tg-bot.service
 ```
 
 查看状态：
 
 ```bash
 sudo systemctl status claude-code.service
+# 或
+sudo systemctl status claude-tg-bot.service
 ```
 
 查看日志：
 
 ```bash
+# 官方 Channel
 cat /tmp/claude-launcher.log
+
+# Python Bot
+cat /tmp/python-bot-launcher.log
+cat /tmp/claude-tg-bot.log
 ```
 
 ## 3. 创建每日自动重启
@@ -156,7 +255,7 @@ Description=Daily restart of Claude Code sessions
 [Service]
 Type=oneshot
 User=root
-ExecStart=/bin/bash -c 'systemctl restart claude-code.service && echo "$(date) Session restarted" >> /tmp/claude-restart-daily.log'
+ExecStart=/bin/bash -c 'systemctl restart claude-code.service 2>/dev/null; systemctl restart claude-tg-bot.service 2>/dev/null; echo "$(date) Session restarted" >> /tmp/claude-restart-daily.log'
 EOF
 ```
 
@@ -193,20 +292,25 @@ sudo systemctl list-timers | grep claude
 ## 4. 日常运维命令
 
 ```bash
-# 查看 Claude 是否在运行
-sudo systemctl status claude-code
+# 查看是否在运行
+sudo systemctl status claude-code        # 官方 Channel
+sudo systemctl status claude-tg-bot      # Python Bot
 
 # 手动重启
-sudo systemctl restart claude-code
+sudo systemctl restart claude-code       # 官方 Channel
+sudo systemctl restart claude-tg-bot     # Python Bot
 
-# 查看 Claude 的实时终端（可以交互）
-tmux -S /tmp/tmux-claude/default attach -t claude-code
+# 查看实时终端（可以交互）
+tmux -S /tmp/tmux-claude/default attach -t claude-code      # 官方 Channel
+tmux -S /tmp/tmux-claude/default attach -t python-tg-bot    # Python Bot
 
 # 从 tmux 中退出（不杀进程）
 # 按 Ctrl+B 然后按 D
 
 # 查看启动日志
-cat /tmp/claude-launcher.log
+cat /tmp/claude-launcher.log        # 官方 Channel
+cat /tmp/python-bot-launcher.log    # Python Bot
+cat /tmp/claude-tg-bot.log          # Python Bot 运行日志
 
 # 查看重启记录
 cat /tmp/claude-restart-daily.log
