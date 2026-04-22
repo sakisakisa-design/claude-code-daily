@@ -1,5 +1,5 @@
 [Unit]
-Description=Restart Claude Code sessions daily at 4:00 AM
+Description=Restart cc-connect daily at 04:00
 
 [Timer]
 OnCalendar=*-*-* 04:00:00

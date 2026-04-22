@@ -1,0 +1,19 @@
+[Unit]
+Description=cc-connect (agent <-> IM bridge)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+Environment="PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/home/ubuntu"
+WorkingDirectory=/home/ubuntu/cc-connect
+
+ExecStart=/home/ubuntu/cc-connect/start.sh
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

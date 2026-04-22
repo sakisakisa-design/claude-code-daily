@@ -1,214 +1,103 @@
 # 常见问题排查
 
-## bun 没有安装
+## Telegram：`Conflict: terminated by other getUpdates request`
 
-**症状**：启动时报 `bun: command not found`，或某些 channel 插件无法加载。
+多个进程在用同一个 Bot Token 抢长轮询。Telegram 只允许一个客户端消费 updates。
 
-**解决**：
-
-```bash
-curl -fsSL https://bun.sh/install | bash
-source ~/.bashrc
-bun --version
-```
-
-如果装了还是找不到，检查 PATH：
+排查：
 
 ```bash
-echo $PATH | grep bun
+ps -eo pid,etime,cmd | grep -iE "cc-connect|telegram|claude-plugins-official/telegram"
 ```
 
-确保 `~/.bun/bin` 在 PATH 中。systemd service 中也要显式设置：
+常见来源：
 
-```ini
-Environment="PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/bin:/usr/bin:/bin"
+- 旧的 python bot 或官方 telegram plugin 还在跑 —— 停掉
+- Claude Code 自己的 telegram plugin（`~/.claude/plugins/cache/claude-plugins-official/telegram`）被启用 —— 在 `work_dir/.claude/settings.json` 里把 `"telegram@claude-plugins-official"` 设为 `false`，或直接清空 `enabledPlugins`
+- 同一台机上起了两个 cc-connect 拉同一个 token —— 合成一个 project
+
+## 回复显示成"长流式预览 + 后续多条短消息"
+
+`[stream_preview]` 还开着。在 `config.toml` 加：
+
+```toml
+[stream_preview]
+enabled = false
 ```
 
-## Telegram Channel 收不到消息
+重启 cc-connect。
 
-### 检查 1：代理配置
+## bot 收到消息后没有回复
 
-国内服务器必须配代理才能连 Telegram API。
+1. 检查 agent 是否连上：日志里应该有 `agent ready` / `session spawned`
+2. `[projects.agent.options].mode`：`default` 模式下 agent 每次工具调用都要 IM 里回"允许"，卡住就是在等你确认
+3. 看 Claude Code 是否登录：`claude auth status`
+4. `APPROVED_DIRECTORY` / `work_dir` 指向的目录存在且可写
+5. 国内服务器：API 不通，配代理（见 [background-running.md](background-running.md#代理)）
+
+## cc-connect 启动报 `instance lock` 或 `address already in use`
+
+前一个实例没清干净。
 
 ```bash
-# 测试是否能连 Telegram
-curl -x http://127.0.0.1:7890 https://api.telegram.org/bot你的TOKEN/getMe
+ps aux | grep cc-connect
+kill <pid>
+rm -f ~/.cc-connect/.config.toml.lock
+# 管理面板端口冲突时
+ss -tlnp | grep 9820
 ```
 
-如果不通，配置代理：
+或启动时加 `--force`：`cc-connect --force --config ~/.cc-connect/config.toml`。
 
-```bash
-# 在 launcher 脚本或 systemd service 中添加
-export HTTPS_PROXY=http://127.0.0.1:7890
-export HTTP_PROXY=http://127.0.0.1:7890
-```
+## 管理面板 (9820) 打不开
 
-### 检查 2：Bot Token 是否正确
+- 检查 `[management].enabled = true` 且 `token` 已设
+- `ss -tlnp | grep 9820` 确认在监听
+- 云服务器需要在 VPC / Security List 放行 9820 入站
+- 明文 HTTP，走公网建议套 HTTPS 或用 SSH 隧道：`ssh -L 9820:127.0.0.1:9820 server`
 
-```bash
-cat ~/.claude/channels/telegram/.env
-```
+## CLAUDE.md 没生效
 
-验证 Token：
+Claude Code 只在 `work_dir` 根目录自动加载 `CLAUDE.md`。
 
-```bash
-curl https://api.telegram.org/bot你的TOKEN/getMe
-```
-
-### 检查 3：Channel 插件是否启用
-
-查看 `~/.claude/settings.json`：
-
-```json
-{
-  "enabledPlugins": {
-    "telegram@claude-plugins-official": true
-  }
-}
-```
-
-如果 plugin 显示 disabled，在 Claude Code 中运行 `/plugins` 重新 enable。
-
-### 检查 4：access.json 配置
-
-```bash
-cat ~/.claude/channels/telegram/access.json
-```
-
-确认你的 user ID 在 `allowFrom` 列表中。
-
-## WeChat Channel 连接问题
-
-### Token 过期
-
-微信客服消息的 token 可能过期，需要重新获取。检查：
-
-```bash
-cat ~/.claude/channels/wechat/account.json
-```
-
-### npx 找不到包
-
-```bash
-# 确认包已安装
-npm list -g claude-code-wechat-channel
-
-# 如果没有
-npm install -g claude-code-wechat-channel
-```
-
-## Claude Code 启动后立刻退出
-
-### 检查 1：认证状态
-
-```bash
-claude auth status
-```
-
-如果未登录：
-
-```bash
-claude auth login
-```
-
-### 检查 2：tmux 是否安装
-
-```bash
-tmux -V
-```
-
-没装就装：
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install -y tmux
-
-# Mac
-brew install tmux
-```
-
-### 检查 3：查看日志
-
-```bash
-cat /tmp/claude-launcher.log
-```
-
-## systemd 服务启动失败
-
-```bash
-# 查看详细错误
-sudo journalctl -u claude-code.service -n 50 --no-pager
-
-# 常见问题：权限
-ls -la ~/claude-workspace/scripts/claude-code-launcher.sh
-# 应该有 x 权限，没有就加：
-chmod +x ~/claude-workspace/scripts/claude-code-launcher.sh
-```
-
-## CLAUDE.md 没有生效
-
-Claude Code 只在工作区根目录自动加载 `CLAUDE.md`。检查：
-
-1. 文件名是否正确（大写：`CLAUDE.md`，不是 `claude.md`）
-2. 文件是否在工作区根目录
-3. systemd service 的 `WorkingDirectory` 是否指向正确的工作区
-
-```bash
-ls -la ~/claude-workspace/CLAUDE.md
-```
+1. 文件名大写：`CLAUDE.md`
+2. 路径是 `config.toml` 里 `work_dir` 指向的目录
+3. 也可在 `~/.claude/CLAUDE.md` 放全局规则
 
 ## Memos 连接失败
 
-### Docker 容器没运行
+Docker 容器状态：
 
 ```bash
 docker ps | grep memos
-
-# 如果没有
-docker start memos
-
-# 如果容器不存在，重新创建
+docker start memos  # 已创建但没跑
+# 首次创建：
 docker run -d --name memos --restart always -p 5230:5230 -v ~/memos-data:/var/opt/memos neosmemo/memos:stable
 ```
 
-### Token 无效
+Token：Memos Web UI (http://localhost:5230) → Settings → Access Tokens。
 
-在 Memos Web UI (http://localhost:5230) → Settings → Access Tokens 检查 token 是否有效。
-
-### 测试连接
+测试：
 
 ```bash
 curl -s http://localhost:5230/api/v1/memos?pageSize=1 \
-  -H "Authorization: Bearer 你的TOKEN" \
-  -H "Accept: application/json"
+  -H "Authorization: Bearer 你的TOKEN"
 ```
 
-## 多实例冲突
-
-同时运行多个 Claude Code 实例时，需要确保：
-
-1. **独立的 config 目录**：第二个实例用 `CLAUDE_CONFIG_DIR=~/.claude-2`
-2. **独立的 tmux socket**：不同的 `/tmp/tmux-claude-N/default`
-3. **独立的工作区**：不同的 `WorkingDirectory`
-4. **独立的 systemd service 文件**：不同的 service name
-
-## Mac mini 特有问题
-
-### tmux 断连
-
-Mac mini 休眠后 tmux session 可能断开：
-
-- 系统设置 → 节能 → 关闭「自动休眠」
-- 终端执行：`sudo pmset -a disablesleep 1`
-
-### Docker 性能
-
-Mac 上 Docker Desktop 占用资源较多。如果只跑 Memos，可以考虑直接用 Memos 的二进制安装，不走 Docker。
-
-### PATH 问题
-
-Mac 的默认 PATH 和 Linux 不同，launcher 脚本中需要调整：
+## systemd service 起不来
 
 ```bash
-export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.bun/bin:$PATH"
+journalctl -u cc-connect.service -n 50 --no-pager
 ```
+
+常见原因：
+
+- `start.sh` 没有 x 权限：`chmod +x ~/cc-connect/start.sh`
+- `~/.cc-connect/env` 里变量名和 `config.toml` 里的 `${...}` 不一致
+- `User=ubuntu` 但实际用户名不是 ubuntu
+
+## Mac mini tmux / 休眠
+
+- 关自动休眠：系统设置 → 节能，或 `sudo pmset -a disablesleep 1`
+- bun/tmux 从 Homebrew 装：`brew install tmux oven-sh/bun/bun`
+- `start.sh` 的 PATH 要加 `/opt/homebrew/bin`

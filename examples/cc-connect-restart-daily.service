@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily restart of cc-connect
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/bin/bash -c 'systemctl restart cc-connect.service && echo "$(date) restarted" >> /tmp/cc-connect-restart.log'
