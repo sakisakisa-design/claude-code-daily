@@ -34,7 +34,8 @@
 | Claude 订阅 或 API key | 二选一 | 是 |
 | CLAUDE.md | 行为规则和上下文 | 是 |
 | cc-connect | IM ↔ agent 桥接 | 是 |
-| Memos | 跨 session 长期记忆 | 推荐 |
+| Memos | 跨 session 长期记忆（tag + 全文） | 推荐 |
+| memo-mcp | 无服务器向量记忆库（语义检索） | 可选 |
 | systemd + tmux | 后台常驻 + 自动重启 | 推荐 |
 
 cc-connect 支持的 agent（`[projects.agent.type]`）：`claudecode`、`codex`、`cursor`、`gemini`、`qoder`、`opencode`、`kimi`、`iflow`、任何 ACP 协议兼容的 agent。
@@ -69,11 +70,214 @@ cd ~/claude-workspace
 
 ### 4. 长期记忆（可选）
 
-见 [Memos 配置指南](docs/memos-setup.md)。
+见 [Memos 配置指南](docs/memos-setup.md)。如果想要"按意思找回"的语义检索，看下面 memo-mcp 一节。
 
 ### 5. 后台常驻
 
 见 [后台运行指南](docs/background-running.md)。
+
+## memo-mcp 无服务器向量记忆库
+
+memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做向量存储、Workers AI 做 embedding。和 Memos 互补：Memos 走 tag 和全文搜索，memo-mcp 走语义检索。
+
+适用场景：跨设备共享记忆、按"意思"检索而不是按关键词、不想自己维护服务器。
+
+### 和 Memos 的区别
+
+| 特性 | Memos | memo-mcp |
+|------|-------|----------|
+| 部署 | 自托管（Docker/二进制） | Cloudflare Worker（无服务器） |
+| 检索 | 全文 + tag | 向量语义 |
+| 状态 | SQLite 文件 | Vectorize 索引 + DO SQLite |
+| 跨设备 | 需要公网/Tailscale | 自带 HTTPS endpoint |
+| 成本 | 服务器电费 | 免费额度内 0 元 |
+| 协议 | REST API | MCP（streamable HTTP / SSE） |
+
+两者可并存。零碎日志和 tag 分类走 Memos，需要"按意思找回"的内容走 memo-mcp。
+
+### 你会得到什么
+
+- 一个 `https://memo-mcp.<你的子域>.workers.dev/mcp` 的 MCP 端点
+- 三个工具：`write_memory`、`search_memory`、`delete_memory`
+- 一条命令把 Claude Code 接上去
+
+### 准备
+
+- Cloudflare 账号（免费）
+- Node.js 18+
+- 安装 wrangler：`npm i -g wrangler`
+- `wrangler login`（浏览器授权）
+
+### 1. 拉代码
+
+```bash
+git clone https://github.com/sakisakisa-design/claude-code-daily.git
+cd claude-code-daily/examples/memo-mcp
+npm install
+```
+
+### 2. 创建 Vectorize 索引
+
+embeddinggemma-300m 输出 768 维向量，metric 用 cosine。
+
+```bash
+wrangler vectorize create memo-kb --dimensions=768 --metric=cosine
+```
+
+如果想用 `search_memory` 的 `tag` 参数过滤，再建一个 metadata 索引：
+
+```bash
+wrangler vectorize create-metadata-index memo-kb --property-name=tags --type=string
+```
+
+> Vectorize 免费额度是每月 3000 万维度查询、500 万维度存储。768 维 × 6500 条记忆才到存储上限，日常完全够用。
+
+### 3. 部署 Worker
+
+```bash
+wrangler deploy
+```
+
+部署成功会输出 endpoint：
+
+```
+https://memo-mcp.<your-subdomain>.workers.dev
+```
+
+健康检查：
+
+```bash
+curl https://memo-mcp.<your-subdomain>.workers.dev/
+# memo-mcp ok
+# endpoints: /mcp (streamable http), /sse (legacy)
+```
+
+Workers AI 不用单独开通，第一次部署时 Cloudflare 自动绑定。免费账号每天 10000 个神经元，embedding 一次约 1 神经元。
+
+### 4. 接入 Claude Code
+
+```bash
+claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.workers.dev/mcp
+```
+
+或者直接写到 `~/.claude/settings.json`：
+
+```json
+{
+  "mcpServers": {
+    "memo-kb": {
+      "type": "http",
+      "url": "https://memo-mcp.<your-subdomain>.workers.dev/mcp"
+    }
+  }
+}
+```
+
+重启 Claude Code，`/mcp` 应该能看到 `memo-kb` 三个工具。
+
+### 5. 使用
+
+让 Claude 自己用，对话里说"记一下…"或"搜一下我之前说过…"，它会自动调对应工具。
+
+手动调示例：
+
+```
+write_memory(content="用 wrangler tail 看 worker 实时日志", tags=["cf","ops"])
+search_memory(query="怎么看 worker 日志", topK=3)
+search_memory(query="部署相关", tag="cf")
+```
+
+### 6. 在 CLAUDE.md 里引导用法
+
+```markdown
+## 长期记忆
+
+走 memo-kb（MCP 向量库）：
+- 重要事实、决策、配置 → write_memory，加 tags
+- 想不起来某事是怎么解决的 → search_memory
+- 失效信息 → delete_memory
+
+只有需要"按意思找回"的内容才存这里。零碎日志和 tag 分类走 Memos。
+```
+
+### 安全和访问控制
+
+默认 Worker 没鉴权，谁拿到 URL 都能读写。生产环境建议加一道：
+
+**方式 1：Cloudflare Access**
+
+在 zero-trust dashboard 给这个 Worker 配 Access policy，要求邮箱白名单或 service token。
+
+**方式 2：自定义 header 校验**
+
+在 `src/index.ts` 的 `fetch` 入口加：
+
+```typescript
+const auth = request.headers.get("x-api-key");
+if (auth !== env.API_KEY) {
+  return new Response("unauthorized", { status: 401 });
+}
+```
+
+设 secret：
+
+```bash
+wrangler secret put API_KEY
+```
+
+Claude Code 这边 `mcpServers` 里加 `headers`：
+
+```json
+{
+  "memo-kb": {
+    "type": "http",
+    "url": "https://...",
+    "headers": { "x-api-key": "your-secret" }
+  }
+}
+```
+
+### 常见问题
+
+**部署报 `binding AI is not defined`**
+确认 `wrangler.toml` 里有 `[ai] binding = "AI"`，并且 `wrangler login` 的账号已开通 Workers AI（免费账号默认开通）。
+
+**`vectorize index not found`**
+索引名要和 `wrangler.toml` 的 `index_name` 一致，默认 `memo-kb`。检查：`wrangler vectorize list`。
+
+**Claude 看不到 memo-kb 工具**
+- 确认 Claude Code 版本支持 streamable HTTP transport
+- 看 `~/.claude/logs/` 里 MCP 连接报错
+- 旧版本退回 SSE：URL 改成 `.../sse`
+
+**搜出来的结果不相关**
+- 写的时候 content 太短，embedding 信息量不够。每条至少一句完整的话
+- 检索时 query 写完整问题，别只给关键词
+- 同语种检索更准
+
+**怎么批量导入已有内容**
+写脚本循环调 `/mcp` 的 write_memory，或者直接用 wrangler 的 vectorize REST API 批量 upsert（绕过 worker 业务逻辑）。
+
+### 成本预估
+
+| 项目 | 免费额度 | 满负载场景 |
+|------|----------|-----------|
+| Workers 请求 | 10 万/天 | 一天 1000 次远没用完 |
+| Workers AI | 10000 神经元/天 | embedding 一次 ~1 神经元 |
+| Vectorize 存储 | 500 万维度 | 6500 条 × 768 维 |
+| Vectorize 查询 | 3000 万维度/月 | 一天 1000 次完全够 |
+| Durable Objects | 1G-s/天 | MCP session 状态，几乎不消耗 |
+
+个人用基本 0 元。重度用一个月几块到十几块封顶。
+
+### 进阶
+
+- 加 `update_memory`：先 query 出 id，再 upsert 同 id 覆盖
+- 加 `list_tags`：从 metadata 聚合所有 tag
+- 换更强的 embedding：`@cf/baai/bge-m3`（1024 维）召回更好但贵一点
+- 把检索结果作为 hook 注入 Claude 上下文，参考 [memos-setup.md](docs/memos-setup.md) 的 `query_kb.sh`
+
+代码在 [examples/memo-mcp](examples/memo-mcp)。
 
 ## 权限
 
