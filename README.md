@@ -117,15 +117,15 @@ dashboard：**Workers & Pages → Create → Workers → Import a repository**
 
 授权后选刚才 fork 的 `claude-code-daily` 仓库，配置三栏：
 
-- **Project name**: `memo-mcp`（这就是后面 URL 的子域名前缀）
+- **Project name**: 项目名 = URL 子域名前缀，**强烈建议用随机串**（例如 `kb-` 加几个随机字符，或者 `openssl rand -hex 4` 生一段），不要用 `memo-mcp` 这种好猜的。这是你的第一道安全线 — workers.dev 的子域名会被爬虫扫，名字越独特越难命中。
 - **Production branch**: `main`
 - **Build command**:
   ```
   cd examples/memo-mcp && npm install
   ```
-- **Deploy command**:
+- **Deploy command**（注意 `--name` 后面填和你上面项目名一样的值）：
   ```
-  cd examples/memo-mcp && (npx wrangler vectorize create memo-kb --dimensions=768 --metric=cosine || true) && (npx wrangler vectorize create-metadata-index memo-kb --property-name=tags --type=string || true) && npx wrangler deploy
+  cd examples/memo-mcp && (npx wrangler vectorize create memo-kb --dimensions=768 --metric=cosine || true) && (npx wrangler vectorize create-metadata-index memo-kb --property-name=tags --type=string || true) && npx wrangler deploy --name 你的项目名
   ```
 - **Advanced setting**: 不用动
 
@@ -138,7 +138,7 @@ dashboard：**Workers & Pages → Create → Workers → Import a repository**
 部署完成后 dashboard 顶部会显示：
 
 ```
-https://memo-mcp.<your-subdomain>.workers.dev
+https://<你的项目名>.<your-subdomain>.workers.dev
 ```
 
 浏览器打开这个 URL，应该看到：
@@ -153,7 +153,7 @@ Workers AI 绑定（embedding 用）和 Vectorize 绑定 Cloudflare 会按 `wran
 ### 4. 接入 Claude Code
 
 ```bash
-claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.workers.dev/mcp
+claude mcp add --transport http memo-kb https://<你的项目名>.<your-subdomain>.workers.dev/mcp
 ```
 
 或者直接写到 `~/.claude/settings.json`：
@@ -163,7 +163,7 @@ claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.worker
   "mcpServers": {
     "memo-kb": {
       "type": "http",
-      "url": "https://memo-mcp.<your-subdomain>.workers.dev/mcp"
+      "url": "https://<你的项目名>.<your-subdomain>.workers.dev/mcp"
     }
   }
 }
@@ -209,82 +209,50 @@ delete_memory(ids=["xxx-uuid"])
 
 ### 安全和访问控制
 
-`workers.dev` 子域名能被扫到（CF 索引 + 第三方爬虫），URL 一旦泄露就能任意读写删你的记忆。**强烈建议加一道 header 鉴权**。
+`workers.dev` 子域名会被爬虫扫，URL 一旦泄露就能任意读写删你的记忆。两种思路：
 
-代码已经内置：只要在 worker 上设了 `API_KEY` secret，所有 `/mcp` 和 `/sse` 请求都必须带 `x-api-key`（或 `Authorization: Bearer <key>`）才能通过；没设就放行（兼容首次部署）。
+#### 方案 A：URL 当密码（推荐，兼容 Claude.ai）
 
-**严格按这个顺序操作**，否则中间会有客户端连不上的窗口期。
+部署时项目名用足够随机的串（上面步骤 2 已经强调），URL 形如 `kb-7g3h.<subdomain>.workers.dev`，靠枚举命中的概率很低。Claude.ai connector 直接填 URL 就连得上，不用配 OAuth。
 
-#### 1. 生成密钥
+注意事项：
+- 部署后**别在公开地方贴你的 URL**（聊天记录、截图、博客）
+- fork 仓库可以保持公开，因为项目名不在代码里（在 CF dashboard 里）
+- 想换 URL 就在 CF dashboard 重新建一个 worker，新名字，旧的删掉
 
-Mac / Linux 终端：
+#### 方案 B：加 header 鉴权（更严，但 Claude.ai 不兼容）
 
-```bash
-openssl rand -hex 32
-```
+Claude.ai 自定义 connector 走 OAuth 2.0，跟 header 鉴权不兼容；如果你只在 Claude Code / 自己的脚本里用 MCP，可以叠这一道。
 
-Windows / 没装 openssl：用 [random.org](https://www.random.org/strings/?num=1&len=32&digits=on&loweralpha=on&unique=on&format=html&rnd=new) 生一串 32 位，或者直接复制下面这串自己改几个字符（**别原样用**）：
+代码已经内置：只要 worker 设了 `API_KEY` secret，所有 `/mcp` 和 `/sse` 请求都必须带 `x-api-key`（或 `Authorization: Bearer <key>`、`Authorization: Basic <base64>`）才能通过；没设就放行。
 
-```
-b32a8672b641ecc352c0d9b968addd4171c324fde61b151dde5886098a387a7a
-```
+**步骤**（按顺序，否则中间客户端会 401）：
 
-把它存好，下面三步都要用。
+1. 生成密钥：`openssl rand -hex 32`（Windows 用 [random.org](https://www.random.org/strings/?num=1&len=32&digits=on&loweralpha=on)）
+2. 客户端先填 header（Claude Code `~/.claude/settings.json`）：
+   ```json
+   {
+     "mcpServers": {
+       "memo-kb": {
+         "type": "http",
+         "url": "https://<你的项目名>.<your-subdomain>.workers.dev/mcp",
+         "headers": { "x-api-key": "你的密钥" }
+       }
+     }
+   }
+   ```
+3. CF dashboard → Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**：Name `API_KEY`，Value 你的密钥，Save
+4. 验证：
+   ```bash
+   curl -i https://<...>/mcp                                # 应 401
+   curl -i -H "x-api-key: 你的密钥" https://<...>/mcp       # 应 4xx 但不是 401
+   ```
 
-#### 2. 先把客户端 header 准备好
+**忘了密钥**：dashboard 删 secret 重设，客户端 header 同步换。
 
-**Claude Code**（编辑 `~/.claude/settings.json`，没有就新建）：
+#### 更严
 
-```json
-{
-  "mcpServers": {
-    "memo-kb": {
-      "type": "http",
-      "url": "https://memo-mcp.<your-subdomain>.workers.dev/mcp",
-      "headers": { "x-api-key": "刚才那串密钥" }
-    }
-  }
-}
-```
-
-**Claude.ai 网页**：Settings → Connectors → 找到 `memo-kb` → 编辑 → 展开 **Advanced** / **Custom headers** → 加一行：
-
-| Name | Value |
-|------|-------|
-| `x-api-key` | 刚才那串密钥 |
-
-保存。
-
-> 现在客户端会带 header，但 worker 还没要求验证，所以照常工作。
-
-#### 3. 在 CF dashboard 设 secret
-
-Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**
-
-- Name: `API_KEY`（注意大小写，必须就是这个名字）
-- Value: 你的密钥
-
-点 Save。CF 会自动在几秒内重新部署 worker，从这一刻起没带 header 的请求一律 401。
-
-#### 4. 验证
-
-终端跑这条（替换 URL）：
-
-```bash
-# 不带 header，应该 401
-curl -i https://memo-mcp.<your-subdomain>.workers.dev/mcp
-
-# 带 header，应该走到 MCP（不会是 401，可能是 400 或 405，因为不是合法的 MCP 请求体，但说明鉴权过了）
-curl -i -H "x-api-key: 你的密钥" https://memo-mcp.<your-subdomain>.workers.dev/mcp
-```
-
-然后回 Claude Code / Claude.ai 试一下 `search_memory` 能不能用。
-
-**忘了密钥 / 想换密钥**：dashboard 把 secret 删掉重设，再回客户端把 header 同步成新值。
-
-**更严的方案**
-
-想要 SSO / 邮箱白名单可以叠 Cloudflare Access：在 zero-trust dashboard 给这个 Worker 配 Access policy。但 Access 不太适合无人值守的 MCP 调用，所以一般 header 鉴权够用。
+要 SSO / 邮箱白名单可以叠 Cloudflare Access（zero-trust dashboard）。但 Access 需要交互式登录，跟无人值守的 MCP 不太搭，一般用不到。
 
 ### 常见问题
 
