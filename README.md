@@ -125,7 +125,7 @@ dashboard：**Workers & Pages → Create → Workers → Import a repository**
   ```
 - **Deploy command**:
   ```
-  cd examples/memo-mcp && npx wrangler vectorize create memo-kb --dimensions=768 --metric=cosine || true && npx wrangler deploy
+  cd examples/memo-mcp && (npx wrangler vectorize create memo-kb --dimensions=768 --metric=cosine || true) && (npx wrangler vectorize create-metadata-index memo-kb --property-name=tags --type=string || true) && npx wrangler deploy
   ```
 - **Advanced setting**: 不用动
 
@@ -213,24 +213,27 @@ delete_memory(ids=["xxx-uuid"])
 
 代码已经内置：只要在 worker 上设了 `API_KEY` secret，所有 `/mcp` 和 `/sse` 请求都必须带 `x-api-key`（或 `Authorization: Bearer <key>`）才能通过；没设就放行（兼容首次部署）。
 
-**1. 生成密钥**
+**严格按这个顺序操作**，否则中间会有客户端连不上的窗口期。
+
+#### 1. 生成密钥
+
+Mac / Linux 终端：
 
 ```bash
 openssl rand -hex 32
 ```
 
-**2. 在 CF dashboard 设 secret**
+Windows / 没装 openssl：用 [random.org](https://www.random.org/strings/?num=1&len=32&digits=on&loweralpha=on&unique=on&format=html&rnd=new) 生一串 32 位，或者直接复制下面这串自己改几个字符（**别原样用**）：
 
-Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**
+```
+b32a8672b641ecc352c0d9b968addd4171c324fde61b151dde5886098a387a7a
+```
 
-- Name: `API_KEY`
-- Value: 上一步生成的随机串
+把它存好，下面三步都要用。
 
-保存。下次请求开始就要鉴权了。
+#### 2. 先把客户端 header 准备好
 
-**3. 在客户端带 header**
-
-Claude Code（`~/.claude/settings.json`）：
+**Claude Code**（编辑 `~/.claude/settings.json`，没有就新建）：
 
 ```json
 {
@@ -238,13 +241,46 @@ Claude Code（`~/.claude/settings.json`）：
     "memo-kb": {
       "type": "http",
       "url": "https://memo-mcp.<your-subdomain>.workers.dev/mcp",
-      "headers": { "x-api-key": "你的随机串" }
+      "headers": { "x-api-key": "刚才那串密钥" }
     }
   }
 }
 ```
 
-Claude.ai connector：编辑 connector → headers 里加 `x-api-key: <你的随机串>`。
+**Claude.ai 网页**：Settings → Connectors → 找到 `memo-kb` → 编辑 → 展开 **Advanced** / **Custom headers** → 加一行：
+
+| Name | Value |
+|------|-------|
+| `x-api-key` | 刚才那串密钥 |
+
+保存。
+
+> 现在客户端会带 header，但 worker 还没要求验证，所以照常工作。
+
+#### 3. 在 CF dashboard 设 secret
+
+Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**
+
+- Name: `API_KEY`（注意大小写，必须就是这个名字）
+- Value: 你的密钥
+
+点 Save。CF 会自动在几秒内重新部署 worker，从这一刻起没带 header 的请求一律 401。
+
+#### 4. 验证
+
+终端跑这条（替换 URL）：
+
+```bash
+# 不带 header，应该 401
+curl -i https://memo-mcp.<your-subdomain>.workers.dev/mcp
+
+# 带 header，应该走到 MCP（不会是 401，可能是 400 或 405，因为不是合法的 MCP 请求体，但说明鉴权过了）
+curl -i -H "x-api-key: 你的密钥" https://memo-mcp.<your-subdomain>.workers.dev/mcp
+```
+
+然后回 Claude Code / Claude.ai 试一下 `search_memory` 能不能用。
+
+**忘了密钥 / 想换密钥**：dashboard 把 secret 删掉重设，再回客户端把 header 同步成新值。
 
 **更严的方案**
 
@@ -254,9 +290,6 @@ Claude.ai connector：编辑 connector → headers 里加 `x-api-key: <你的随
 
 **部署日志里报 `vectorize index not found` 或 `binding ... not bound`**
 索引还没建，或者名字不是 `memo-kb`。回到 dashboard 的 AI → Vectorize 里检查，名字必须和 `wrangler.toml` 里的 `index_name` 完全一致。
-
-**部署日志里报 metadata index 相关错误**
-没建 `tags` 那个 metadata index。回到 Vectorize 索引详情页加上。
 
 **Claude 看不到 memo-kb 工具**
 - 确认 Claude Code 版本支持 streamable HTTP transport
