@@ -129,10 +129,25 @@ export class MemoMCP extends McpAgent<Env> {
 
 function checkAuth(request: Request, env: Env): Response | null {
   if (!env.API_KEY) return null;
-  const provided =
-    request.headers.get("x-api-key") ||
-    (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (provided === env.API_KEY) return null;
+  const auth = request.headers.get("authorization") ?? "";
+  // 1. x-api-key header
+  if (request.headers.get("x-api-key") === env.API_KEY) return null;
+  // 2. Authorization: Bearer <key>
+  const bearer = auth.match(/^Bearer\s+(.+)$/i);
+  if (bearer && bearer[1].trim() === env.API_KEY) return null;
+  // 3. Authorization: Basic base64(user:pass) — accept the key in EITHER user OR pass slot
+  const basic = auth.match(/^Basic\s+(.+)$/i);
+  if (basic) {
+    try {
+      const decoded = atob(basic[1].trim());
+      const idx = decoded.indexOf(":");
+      const user = idx >= 0 ? decoded.slice(0, idx) : decoded;
+      const pass = idx >= 0 ? decoded.slice(idx + 1) : "";
+      if (user === env.API_KEY || pass === env.API_KEY) return null;
+    } catch {
+      // fall through
+    }
+  }
   return new Response("unauthorized", { status: 401 });
 }
 
