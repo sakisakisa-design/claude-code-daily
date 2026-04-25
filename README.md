@@ -99,62 +99,69 @@ memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做
 
 - 一个 `https://memo-mcp.<你的子域>.workers.dev/mcp` 的 MCP 端点
 - 三个工具：`write_memory`、`search_memory`、`delete_memory`
-- 一条命令把 Claude Code 接上去
+- 全程在 Cloudflare 网页 dashboard 操作，不用装 wrangler、不用本地 Node
 
 ### 准备
 
-- Cloudflare 账号（免费）
-- Node.js 18+
-- 安装 wrangler：`npm i -g wrangler`
-- `wrangler login`（浏览器授权）
+只要一个 Cloudflare 账号（免费）和一个 GitHub 账号。
 
-### 1. 拉代码
+### 1. Fork 仓库
 
-```bash
-git clone https://github.com/sakisakisa-design/claude-code-daily.git
-cd claude-code-daily/examples/memo-mcp
-npm install
-```
+打开 [github.com/sakisakisa-design/claude-code-daily](https://github.com/sakisakisa-design/claude-code-daily) 点 **Fork**，fork 到你自己名下。
 
-### 2. 创建 Vectorize 索引
+代码在 `examples/memo-mcp/`，下一步会让 Cloudflare 直接从这个目录构建。
 
-embeddinggemma-300m 输出 768 维向量，metric 用 cosine。
+### 2. 在 Cloudflare 创建 Vectorize 索引
 
-```bash
-wrangler vectorize create memo-kb --dimensions=768 --metric=cosine
-```
+打开 dashboard：**AI → Vectorize → Create index**
 
-如果想用 `search_memory` 的 `tag` 参数过滤，再建一个 metadata 索引：
+- Name: `memo-kb`
+- Dimensions: `768`
+- Metric: `Cosine`
 
-```bash
-wrangler vectorize create-metadata-index memo-kb --property-name=tags --type=string
-```
+创建完，再点进这个索引 → **Metadata indexes → Create** 加一个：
 
-> Vectorize 免费额度是每月 3000 万维度查询、500 万维度存储。768 维 × 6500 条记忆才到存储上限，日常完全够用。
+- Property name: `tags`
+- Type: `String`
 
-### 3. 部署 Worker
+（不加这个 metadata index，`search_memory` 的 `tag` 过滤会报错。）
 
-```bash
-wrangler deploy
-```
+### 3. 在 Cloudflare 接 GitHub 部署 Worker
 
-部署成功会输出 endpoint：
+dashboard：**Workers & Pages → Create → Workers → Import a repository**
+
+第一次会让你授权 Cloudflare 访问 GitHub，照做。
+
+授权后选刚才 fork 的 `claude-code-daily` 仓库，配置：
+
+- **Project name**: `memo-mcp`（这个就是后面 URL 的子域名前缀）
+- **Production branch**: `main`
+- **Root directory**: `examples/memo-mcp`
+- **Build command**: 留空（wrangler.toml 已经够用）
+- **Deploy command**: `npx wrangler deploy`
+
+点 **Create and deploy**。Cloudflare 会自动跑 `npm install` + `npx wrangler deploy`，几十秒内完成。
+
+之后每次你 push 到 fork 的 main 分支，Cloudflare 会自动重新部署。
+
+### 4. 拿 endpoint 验证
+
+部署完成后 dashboard 顶部会显示：
 
 ```
 https://memo-mcp.<your-subdomain>.workers.dev
 ```
 
-健康检查：
+浏览器打开这个 URL，应该看到：
 
-```bash
-curl https://memo-mcp.<your-subdomain>.workers.dev/
-# memo-mcp ok
-# endpoints: /mcp (streamable http), /sse (legacy)
+```
+memo-mcp ok
+endpoints: /mcp (streamable http), /sse (legacy)
 ```
 
-Workers AI 不用单独开通，第一次部署时 Cloudflare 自动绑定。免费账号每天 10000 个神经元，embedding 一次约 1 神经元。
+Workers AI 绑定（embedding 用）和 Vectorize 绑定 Cloudflare 会按 `wrangler.toml` 自动注入，不用手动配。
 
-### 4. 接入 Claude Code
+### 5. 接入 Claude Code
 
 ```bash
 claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.workers.dev/mcp
@@ -175,7 +182,7 @@ claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.worker
 
 重启 Claude Code，`/mcp` 应该能看到 `memo-kb` 三个工具。
 
-### 5. 使用
+### 6. 使用
 
 让 Claude 自己用，对话里说"记一下…"或"搜一下我之前说过…"，它会自动调对应工具。
 
@@ -210,7 +217,7 @@ search_memory(query="部署相关", tag="cf")
 
 **方式 2：自定义 header 校验**
 
-在 `src/index.ts` 的 `fetch` 入口加：
+在 fork 的 `src/index.ts` 的 `fetch` 入口加：
 
 ```typescript
 const auth = request.headers.get("x-api-key");
@@ -219,11 +226,7 @@ if (auth !== env.API_KEY) {
 }
 ```
 
-设 secret：
-
-```bash
-wrangler secret put API_KEY
-```
+提交 push，Cloudflare 会自动重新部署。然后到 dashboard：**Worker 详情 → Settings → Variables and Secrets → Add → Type: Secret**，name 填 `API_KEY`，value 填一个长随机串。
 
 Claude Code 这边 `mcpServers` 里加 `headers`：
 
@@ -239,11 +242,11 @@ Claude Code 这边 `mcpServers` 里加 `headers`：
 
 ### 常见问题
 
-**部署报 `binding AI is not defined`**
-确认 `wrangler.toml` 里有 `[ai] binding = "AI"`，并且 `wrangler login` 的账号已开通 Workers AI（免费账号默认开通）。
+**部署日志里报 `vectorize index not found` 或 `binding ... not bound`**
+索引还没建，或者名字不是 `memo-kb`。回到 dashboard 的 AI → Vectorize 里检查，名字必须和 `wrangler.toml` 里的 `index_name` 完全一致。
 
-**`vectorize index not found`**
-索引名要和 `wrangler.toml` 的 `index_name` 一致，默认 `memo-kb`。检查：`wrangler vectorize list`。
+**部署日志里报 metadata index 相关错误**
+没建 `tags` 那个 metadata index。回到 Vectorize 索引详情页加上。
 
 **Claude 看不到 memo-kb 工具**
 - 确认 Claude Code 版本支持 streamable HTTP transport
@@ -256,7 +259,10 @@ Claude Code 这边 `mcpServers` 里加 `headers`：
 - 同语种检索更准
 
 **怎么批量导入已有内容**
-写脚本循环调 `/mcp` 的 write_memory，或者直接用 wrangler 的 vectorize REST API 批量 upsert（绕过 worker 业务逻辑）。
+临时本地装一次 wrangler（`npm i -g wrangler && wrangler login`），用 `wrangler vectorize insert` 直接灌数据，绕过 Worker。或者写个脚本循环 HTTP 调 `/mcp` 的 write_memory。
+
+**改了代码 dashboard 没自动部署**
+检查 fork 仓库的 push 是不是到了 main 分支；Cloudflare 在 Worker 详情 → **Builds** 里能看到每次构建日志。
 
 ### 成本预估
 
@@ -272,9 +278,11 @@ Claude Code 这边 `mcpServers` 里加 `headers`：
 
 ### 进阶
 
+改完代码 push 到 fork，Cloudflare 自动重新部署。可以折腾的方向：
+
 - 加 `update_memory`：先 query 出 id，再 upsert 同 id 覆盖
 - 加 `list_tags`：从 metadata 聚合所有 tag
-- 换更强的 embedding：`@cf/baai/bge-m3`（1024 维）召回更好但贵一点
+- 换更强的 embedding：`@cf/baai/bge-m3`（1024 维）召回更好但贵一点。换之前要在 dashboard 重建一个对应维度的 Vectorize 索引
 - 把检索结果作为 hook 注入 Claude 上下文，参考 [memos-setup.md](docs/memos-setup.md) 的 `query_kb.sh`
 
 代码在 [examples/memo-mcp](examples/memo-mcp)。
