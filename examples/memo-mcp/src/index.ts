@@ -127,6 +127,52 @@ export class MemoMCP extends McpAgent<Env> {
   }
 }
 
+async function handleSearch(request: Request, env: Env): Promise<Response> {
+  let body: { query?: string; topK?: number; tag?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid json" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  const query = body.query;
+  if (!query || typeof query !== "string") {
+    return new Response(JSON.stringify({ error: "query required" }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  const topK = Math.max(1, Math.min(20, Number(body.topK) || 5));
+  const tag = body.tag;
+  const values = await embed(env, query);
+  const result = await env.MEMO_INDEX.query(values, {
+    topK,
+    returnMetadata: "all",
+    filter: tag ? { tags: { $in: [tag] } } : undefined,
+  });
+  const matches = result.matches.map((m) => {
+    const md = (m.metadata ?? {}) as {
+      content?: string;
+      tags?: string[];
+      source_id?: string;
+      created_at?: string;
+    };
+    return {
+      id: m.id,
+      score: Number(m.score.toFixed(4)),
+      content: md.content ?? "",
+      tags: md.tags ?? [],
+      source_id: md.source_id,
+      created_at: md.created_at,
+    };
+  });
+  return new Response(JSON.stringify({ matches }), {
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function checkAuth(request: Request, env: Env): Response | null {
   if (!env.API_KEY) return null;
   // 1. ?token=<key> query param — friendly to clients that only accept a URL
@@ -173,6 +219,12 @@ export default {
     }
     if (url.pathname === "/sse" || url.pathname === "/sse/message") {
       return MemoMCP.serveSSE("/sse").fetch(request, env, ctx);
+    }
+    // Lightweight non-MCP search endpoint for hooks / clients that don't
+    // want the JSON-RPC handshake overhead. POST /search with JSON body
+    // {"query": "...", "topK": 8, "tag": "optional"}.
+    if (url.pathname === "/search" && request.method === "POST") {
+      return handleSearch(request, env);
     }
     return new Response("not found", { status: 404 });
   },
