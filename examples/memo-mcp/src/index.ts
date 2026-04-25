@@ -6,6 +6,7 @@ interface Env {
   AI: Ai;
   MEMO_INDEX: Vectorize;
   MCP_OBJECT: DurableObjectNamespace;
+  API_KEY?: string;
 }
 
 const EMBED_MODEL = "@cf/google/embeddinggemma-300m";
@@ -21,34 +22,32 @@ export class MemoMCP extends McpAgent<Env> {
   async init() {
     this.server.tool(
       "write_memory",
-      "Save a piece of text into the memory index. Returns the assigned id.",
+      "Save or upsert a memory. If id is provided, overwrites that record (use for updates). Otherwise a new uuid is assigned. Returns the id.",
       {
         content: z.string().describe("The text to remember"),
         tags: z.array(z.string()).optional().describe("Optional tags for filtering"),
+        id: z.string().optional().describe("Optional explicit id. If provided, upserts (overwrites) that record. Use search_memory first to find existing ids."),
+        source_id: z.string().optional().describe("Optional pointer to an external source record (e.g. source memo id). Stored as metadata."),
       },
-      async ({ content, tags }) => {
+      async ({ content, tags, id, source_id }) => {
         const values = await embed(this.env, content);
-        const id = crypto.randomUUID();
-        await this.env.MEMO_INDEX.upsert([
-          {
-            id,
-            values,
-            metadata: {
-              content,
-              tags: tags ?? [],
-              created_at: new Date().toISOString(),
-            },
-          },
-        ]);
+        const finalId = id ?? crypto.randomUUID();
+        const metadata: Record<string, unknown> = {
+          content,
+          tags: tags ?? [],
+          created_at: new Date().toISOString(),
+        };
+        if (source_id) metadata.source_id = source_id;
+        await this.env.MEMO_INDEX.upsert([{ id: finalId, values, metadata }]);
         return {
-          content: [{ type: "text", text: `saved id=${id}` }],
+          content: [{ type: "text", text: `id=${finalId}` }],
         };
       },
     );
 
     this.server.tool(
       "search_memory",
-      "Semantic search over saved memories. Returns top matches with content, score and tags.",
+      "Semantic search over saved memories. Returns top matches as JSON lines with id, score, content, tags, source_id. Use the id with delete_memory or write_memory(id=...) for updates.",
       {
         query: z.string().describe("What to look for"),
         topK: z.number().int().min(1).max(20).default(5),
@@ -62,8 +61,20 @@ export class MemoMCP extends McpAgent<Env> {
           filter: tag ? { tags: { $in: [tag] } } : undefined,
         });
         const lines = result.matches.map((m) => {
-          const md = (m.metadata ?? {}) as { content?: string; tags?: string[] };
-          return `[${m.score.toFixed(3)}] ${md.content ?? ""}  ${(md.tags ?? []).map((t) => "#" + t).join(" ")}`.trim();
+          const md = (m.metadata ?? {}) as {
+            content?: string;
+            tags?: string[];
+            source_id?: string;
+            created_at?: string;
+          };
+          return JSON.stringify({
+            id: m.id,
+            score: Number(m.score.toFixed(4)),
+            content: md.content ?? "",
+            tags: md.tags ?? [],
+            source_id: md.source_id,
+            created_at: md.created_at,
+          });
         });
         return {
           content: [
@@ -74,32 +85,76 @@ export class MemoMCP extends McpAgent<Env> {
     );
 
     this.server.tool(
+      "get_memory",
+      "Fetch one or more memories by id. Returns same JSON shape as search_memory.",
+      {
+        ids: z.array(z.string()).min(1).max(50).describe("List of memory ids"),
+      },
+      async ({ ids }) => {
+        const result = await this.env.MEMO_INDEX.getByIds(ids);
+        const lines = result.map((m) => {
+          const md = (m.metadata ?? {}) as {
+            content?: string;
+            tags?: string[];
+            source_id?: string;
+            created_at?: string;
+          };
+          return JSON.stringify({
+            id: m.id,
+            content: md.content ?? "",
+            tags: md.tags ?? [],
+            source_id: md.source_id,
+            created_at: md.created_at,
+          });
+        });
+        return {
+          content: [
+            { type: "text", text: lines.length ? lines.join("\n") : "(not found)" },
+          ],
+        };
+      },
+    );
+
+    this.server.tool(
       "delete_memory",
-      "Delete a memory by id.",
-      { id: z.string() },
-      async ({ id }) => {
-        await this.env.MEMO_INDEX.deleteByIds([id]);
-        return { content: [{ type: "text", text: `deleted id=${id}` }] };
+      "Delete one or more memories by id.",
+      { ids: z.array(z.string()).min(1).max(50).describe("List of memory ids to delete") },
+      async ({ ids }) => {
+        await this.env.MEMO_INDEX.deleteByIds(ids);
+        return { content: [{ type: "text", text: `deleted ${ids.length} id(s): ${ids.join(", ")}` }] };
       },
     );
   }
+}
+
+function checkAuth(request: Request, env: Env): Response | null {
+  if (!env.API_KEY) return null;
+  const provided =
+    request.headers.get("x-api-key") ||
+    (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (provided === env.API_KEY) return null;
+  return new Response("unauthorized", { status: 401 });
 }
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/mcp") {
-      return MemoMCP.serve("/mcp").fetch(request, env, ctx);
-    }
-    if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-      return MemoMCP.serveSSE("/sse").fetch(request, env, ctx);
-    }
     if (url.pathname === "/") {
       return new Response(
         "memo-mcp ok\nendpoints: /mcp (streamable http), /sse (legacy)\n",
         { headers: { "content-type": "text/plain" } },
       );
+    }
+
+    const authFail = checkAuth(request, env);
+    if (authFail) return authFail;
+
+    if (url.pathname === "/mcp") {
+      return MemoMCP.serve("/mcp").fetch(request, env, ctx);
+    }
+    if (url.pathname === "/sse" || url.pathname === "/sse/message") {
+      return MemoMCP.serveSSE("/sse").fetch(request, env, ctx);
     }
     return new Response("not found", { status: 404 });
   },

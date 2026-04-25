@@ -98,7 +98,7 @@ memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做
 ### 你会得到什么
 
 - 一个 `https://memo-mcp.<你的子域>.workers.dev/mcp` 的 MCP 端点
-- 三个工具：`write_memory`、`search_memory`、`delete_memory`
+- 四个工具：`write_memory`、`search_memory`、`get_memory`、`delete_memory`
 - 全程在 Cloudflare 网页 dashboard 操作，不用装 wrangler、不用本地 Node
 
 ### 准备
@@ -179,8 +179,19 @@ claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.worker
 
 ```
 write_memory(content="用 wrangler tail 看 worker 实时日志", tags=["cf","ops"])
+# → id=xxx-uuid
+
 search_memory(query="怎么看 worker 日志", topK=3)
+# → 每行一个 JSON：{"id":"...","score":0.83,"content":"...","tags":[...]}
+
 search_memory(query="部署相关", tag="cf")
+
+get_memory(ids=["xxx-uuid","yyy-uuid"])
+
+# 更新已有记忆：拿 id 重新 write_memory（自动 upsert 覆盖）
+write_memory(id="xxx-uuid", content="新内容", tags=["cf","ops"])
+
+delete_memory(ids=["xxx-uuid"])
 ```
 
 ### 6. 在 CLAUDE.md 里引导用法（可选）
@@ -198,36 +209,46 @@ search_memory(query="部署相关", tag="cf")
 
 ### 安全和访问控制
 
-默认 Worker 没鉴权，谁拿到 URL 都能读写。生产环境建议加一道：
+`workers.dev` 子域名能被扫到（CF 索引 + 第三方爬虫），URL 一旦泄露就能任意读写删你的记忆。**强烈建议加一道 header 鉴权**。
 
-**方式 1：Cloudflare Access**
+代码已经内置：只要在 worker 上设了 `API_KEY` secret，所有 `/mcp` 和 `/sse` 请求都必须带 `x-api-key`（或 `Authorization: Bearer <key>`）才能通过；没设就放行（兼容首次部署）。
 
-在 zero-trust dashboard 给这个 Worker 配 Access policy，要求邮箱白名单或 service token。
+**1. 生成密钥**
 
-**方式 2：自定义 header 校验**
-
-在 fork 的 `src/index.ts` 的 `fetch` 入口加：
-
-```typescript
-const auth = request.headers.get("x-api-key");
-if (auth !== env.API_KEY) {
-  return new Response("unauthorized", { status: 401 });
-}
+```bash
+openssl rand -hex 32
 ```
 
-提交 push，Cloudflare 会自动重新部署。然后到 dashboard：**Worker 详情 → Settings → Variables and Secrets → Add → Type: Secret**，name 填 `API_KEY`，value 填一个长随机串。
+**2. 在 CF dashboard 设 secret**
 
-Claude Code 这边 `mcpServers` 里加 `headers`：
+Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**
+
+- Name: `API_KEY`
+- Value: 上一步生成的随机串
+
+保存。下次请求开始就要鉴权了。
+
+**3. 在客户端带 header**
+
+Claude Code（`~/.claude/settings.json`）：
 
 ```json
 {
-  "memo-kb": {
-    "type": "http",
-    "url": "https://...",
-    "headers": { "x-api-key": "your-secret" }
+  "mcpServers": {
+    "memo-kb": {
+      "type": "http",
+      "url": "https://memo-mcp.<your-subdomain>.workers.dev/mcp",
+      "headers": { "x-api-key": "你的随机串" }
+    }
   }
 }
 ```
+
+Claude.ai connector：编辑 connector → headers 里加 `x-api-key: <你的随机串>`。
+
+**更严的方案**
+
+想要 SSO / 邮箱白名单可以叠 Cloudflare Access：在 zero-trust dashboard 给这个 Worker 配 Access policy。但 Access 不太适合无人值守的 MCP 调用，所以一般 header 鉴权够用。
 
 ### 常见问题
 
@@ -269,7 +290,6 @@ Claude Code 这边 `mcpServers` 里加 `headers`：
 
 改完代码 push 到 fork，Cloudflare 自动重新部署。可以折腾的方向：
 
-- 加 `update_memory`：先 query 出 id，再 upsert 同 id 覆盖
 - 加 `list_tags`：从 metadata 聚合所有 tag
 - 换更强的 embedding：`@cf/baai/bge-m3`（1024 维）召回更好但贵一点。换之前要在 dashboard 重建一个对应维度的 Vectorize 索引
 - 把检索结果作为 hook 注入 Claude 上下文，参考 [memos-setup.md](docs/memos-setup.md) 的 `query_kb.sh`
