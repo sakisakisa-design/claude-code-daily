@@ -1,0 +1,20 @@
+name = "memo-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "MEMO_INDEX"
+index_name = "memo-kb"
+
+[durable_objects]
+bindings = [
+  { name = "MCP_OBJECT", class_name = "MemoMCP" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MemoMCP"]
