@@ -211,48 +211,78 @@ delete_memory(ids=["xxx-uuid"])
 
 `workers.dev` 子域名会被爬虫扫，URL 一旦泄露就能任意读写删你的记忆。两种思路：
 
-#### 方案 A：URL 当密码（推荐，兼容 Claude.ai）
+### 安全和访问控制
 
-部署时项目名用足够随机的串（上面步骤 2 已经强调），URL 形如 `kb-7g3h.<subdomain>.workers.dev`，靠枚举命中的概率很低。Claude.ai connector 直接填 URL 就连得上，不用配 OAuth。
+`workers.dev` 子域名会被爬虫扫，URL 一旦泄露就能任意读写删你的记忆。三种思路按强度从弱到强：
 
-注意事项：
+#### 方案 A：URL 当密码（最低限度）
+
+部署时项目名用足够随机的串（上面步骤 2 已经强调），URL 形如 `kb-7g3h.<subdomain>.workers.dev`，靠枚举命中概率很低。无需配置任何 secret。
+
+注意：
 - 部署后**别在公开地方贴你的 URL**（聊天记录、截图、博客）
 - fork 仓库可以保持公开，因为项目名不在代码里（在 CF dashboard 里）
 - 想换 URL 就在 CF dashboard 重新建一个 worker，新名字，旧的删掉
 
-#### 方案 B：加 header 鉴权（更严，但 Claude.ai 不兼容）
+#### 方案 B：URL 加 ?token= 查询串（推荐，兼容所有客户端）
 
-Claude.ai 自定义 connector 走 OAuth 2.0，跟 header 鉴权不兼容；如果你只在 Claude Code / 自己的脚本里用 MCP，可以叠这一道。
+跟方案 A 一样不用配 OAuth，但多一道密钥。Claude.ai connector / Claude Code / 任何只接受单个 URL 的 MCP 客户端都能用。
 
-代码已经内置：只要 worker 设了 `API_KEY` secret，所有 `/mcp` 和 `/sse` 请求都必须带 `x-api-key`（或 `Authorization: Bearer <key>`、`Authorization: Basic <base64>`）才能通过；没设就放行。
+**步骤**：
 
-**步骤**（按顺序，否则中间客户端会 401）：
-
-1. 生成密钥：`openssl rand -hex 32`（Windows 用 [random.org](https://www.random.org/strings/?num=1&len=32&digits=on&loweralpha=on)）
-2. 客户端先填 header（Claude Code `~/.claude/settings.json`）：
-   ```json
-   {
-     "mcpServers": {
-       "memo-kb": {
-         "type": "http",
-         "url": "https://<你的项目名>.<your-subdomain>.workers.dev/mcp",
-         "headers": { "x-api-key": "你的密钥" }
+1. 生成 token：`openssl rand -hex 32`（Windows 用 [random.org](https://www.random.org/strings/?num=1&len=32&digits=on&loweralpha=on)）
+2. CF dashboard → Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**：Name `API_KEY`，Value 你的 token
+3. 客户端用带 token 的完整 URL：
+   ```
+   https://<你的项目名>.<your-subdomain>.workers.dev/mcp?token=你的token
+   ```
+   - **Claude.ai connector**：URL 那栏直接填上面这串（含 `?token=`）
+   - **Claude Code** `~/.claude/settings.json`：
+     ```json
+     {
+       "mcpServers": {
+         "memo-kb": {
+           "type": "http",
+           "url": "https://<...>/mcp?token=你的token"
+         }
        }
      }
-   }
-   ```
-3. CF dashboard → Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**：Name `API_KEY`，Value 你的密钥，Save
-4. 验证：
-   ```bash
-   curl -i https://<...>/mcp                                # 应 401
-   curl -i -H "x-api-key: 你的密钥" https://<...>/mcp       # 应 4xx 但不是 401
-   ```
+     ```
 
-**忘了密钥**：dashboard 删 secret 重设，客户端 header 同步换。
+**注意**：URL 里有 token 意味着 token 可能进 CF 的访问日志，所以这个 token 不算最高安全级别。但比裸 URL 强很多，且兼容性最好。
+
+#### 方案 C：HTTP header 鉴权（最强，但 Claude.ai 不兼容）
+
+Claude.ai 自定义 connector 走 OAuth 2.0，不会传 header；只在 Claude Code / 自己脚本里用 MCP 时可以叠这一道。
+
+设了 `API_KEY` secret 后，请求带下面任一 header 都通过：
+- `x-api-key: <key>`
+- `Authorization: Bearer <key>`
+- `Authorization: Basic <base64(任何用户名:key 或 key:任何密码)>`
+
+Claude Code `~/.claude/settings.json`：
+
+```json
+{
+  "mcpServers": {
+    "memo-kb": {
+      "type": "http",
+      "url": "https://<你的项目名>.<your-subdomain>.workers.dev/mcp",
+      "headers": { "x-api-key": "你的密钥" }
+    }
+  }
+}
+```
+
+> 验证：`curl -i https://<...>/mcp` 应 401；`curl -i -H "x-api-key: 你的密钥" https://<...>/mcp` 应不是 401。
+
+#### 注意：方案 B 和 C 共用同一个 `API_KEY` secret
+
+设一次 secret，三种方式（query/header/basic）任意一个对的就放行。所以可以同时给手机用 query、给本地脚本用 header。
 
 #### 更严
 
-要 SSO / 邮箱白名单可以叠 Cloudflare Access（zero-trust dashboard）。但 Access 需要交互式登录，跟无人值守的 MCP 不太搭，一般用不到。
+要 SSO / 邮箱白名单可以叠 Cloudflare Access。但 Access 需要交互式登录，跟无人值守的 MCP 不太搭。
 
 ### 常见问题
 
