@@ -86,12 +86,17 @@ export class MemoMCP extends McpAgent<Env> {
 
     this.server.tool(
       "get_memory",
-      "Fetch one or more memories by id. Returns same JSON shape as search_memory.",
+      "Fetch one or more memories by id. Returns same JSON shape as search_memory. Pass ids (array) for batch, or id (string) for one.",
       {
-        ids: z.array(z.string()).min(1).max(50).describe("List of memory ids"),
+        ids: z.array(z.string()).min(1).max(50).optional().describe("List of memory ids"),
+        id: z.string().optional().describe("Single memory id (alias for ids:[id])"),
       },
-      async ({ ids }) => {
-        const result = await this.env.MEMO_INDEX.getByIds(ids);
+      async ({ ids, id }) => {
+        const all = ids && ids.length ? ids : id ? [id] : [];
+        if (!all.length) {
+          return { content: [{ type: "text", text: "(no ids provided)" }] };
+        }
+        const result = await this.env.MEMO_INDEX.getByIds(all);
         const lines = result.map((m) => {
           const md = (m.metadata ?? {}) as {
             content?: string;
@@ -117,11 +122,18 @@ export class MemoMCP extends McpAgent<Env> {
 
     this.server.tool(
       "delete_memory",
-      "Delete one or more memories by id.",
-      { ids: z.array(z.string()).min(1).max(50).describe("List of memory ids to delete") },
-      async ({ ids }) => {
-        await this.env.MEMO_INDEX.deleteByIds(ids);
-        return { content: [{ type: "text", text: `deleted ${ids.length} id(s): ${ids.join(", ")}` }] };
+      "Delete one or more memories by id. Pass ids (array) for batch, or id (string) for one.",
+      {
+        ids: z.array(z.string()).min(1).max(50).optional().describe("List of memory ids to delete"),
+        id: z.string().optional().describe("Single memory id (alias for ids:[id])"),
+      },
+      async ({ ids, id }) => {
+        const all = ids && ids.length ? ids : id ? [id] : [];
+        if (!all.length) {
+          return { content: [{ type: "text", text: "(no ids provided)" }] };
+        }
+        await this.env.MEMO_INDEX.deleteByIds(all);
+        return { content: [{ type: "text", text: `deleted ${all.length} id(s): ${all.join(", ")}` }] };
       },
     );
   }
