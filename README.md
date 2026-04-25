@@ -109,42 +109,31 @@ memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做
 
 打开 [github.com/sakisakisa-design/claude-code-daily](https://github.com/sakisakisa-design/claude-code-daily) 点 **Fork**，fork 到你自己名下。
 
-代码在 `examples/memo-mcp/`，下一步会让 Cloudflare 直接从这个目录构建。
-
-### 2. 在 Cloudflare 创建 Vectorize 索引
-
-打开 dashboard：**AI → Vectorize → Create index**
-
-- Name: `memo-kb`
-- Dimensions: `768`
-- Metric: `Cosine`
-
-创建完，再点进这个索引 → **Metadata indexes → Create** 加一个：
-
-- Property name: `tags`
-- Type: `String`
-
-（不加这个 metadata index，`search_memory` 的 `tag` 过滤会报错。）
-
-### 3. 在 Cloudflare 接 GitHub 部署 Worker
+### 2. 在 Cloudflare 接 GitHub 部署 Worker
 
 dashboard：**Workers & Pages → Create → Workers → Import a repository**
 
 第一次会让你授权 Cloudflare 访问 GitHub，照做。
 
-授权后选刚才 fork 的 `claude-code-daily` 仓库，配置：
+授权后选刚才 fork 的 `claude-code-daily` 仓库，配置三栏：
 
-- **Project name**: `memo-mcp`（这个就是后面 URL 的子域名前缀）
+- **Project name**: `memo-mcp`（这就是后面 URL 的子域名前缀）
 - **Production branch**: `main`
-- **Root directory**: `examples/memo-mcp`
-- **Build command**: 留空（wrangler.toml 已经够用）
-- **Deploy command**: `npx wrangler deploy`
+- **Build command**:
+  ```
+  cd examples/memo-mcp && npm install
+  ```
+- **Deploy command**:
+  ```
+  cd examples/memo-mcp && npx wrangler vectorize create memo-kb --dimensions=768 --metric=cosine || true && npx wrangler deploy
+  ```
+- **Advanced setting**: 不用动
 
-点 **Create and deploy**。Cloudflare 会自动跑 `npm install` + `npx wrangler deploy`，几十秒内完成。
+点 **Save and deploy**。Cloudflare 会自己 cd 进 `examples/memo-mcp` 目录跑这两条命令：先建 Vectorize 索引（已存在就跳过，所以可以反复部署），再部署 Worker。几十秒搞定。
 
-之后每次你 push 到 fork 的 main 分支，Cloudflare 会自动重新部署。
+之后每次 push 到 fork 的 main 分支，自动重新部署。
 
-### 4. 拿 endpoint 验证
+### 3. 拿 endpoint 验证
 
 部署完成后 dashboard 顶部会显示：
 
@@ -161,7 +150,7 @@ endpoints: /mcp (streamable http), /sse (legacy)
 
 Workers AI 绑定（embedding 用）和 Vectorize 绑定 Cloudflare 会按 `wrangler.toml` 自动注入，不用手动配。
 
-### 5. 接入 Claude Code
+### 4. 接入 Claude Code
 
 ```bash
 claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.workers.dev/mcp
@@ -182,7 +171,7 @@ claude mcp add --transport http memo-kb https://memo-mcp.<your-subdomain>.worker
 
 重启 Claude Code，`/mcp` 应该能看到 `memo-kb` 三个工具。
 
-### 6. 使用
+### 5. 使用
 
 让 Claude 自己用，对话里说"记一下…"或"搜一下我之前说过…"，它会自动调对应工具。
 
@@ -194,7 +183,7 @@ search_memory(query="怎么看 worker 日志", topK=3)
 search_memory(query="部署相关", tag="cf")
 ```
 
-### 6. 在 CLAUDE.md 里引导用法
+### 6. 在 CLAUDE.md 里引导用法（可选）
 
 ```markdown
 ## 长期记忆
