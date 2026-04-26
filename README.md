@@ -1,6 +1,6 @@
 # Claude Code Daily
 
-让 Claude Code 24 小时在线，通过 IM 随时对话，具备跨 session 长期记忆。
+让 Claude Code / Codex 24 小时在线，通过 IM 随时对话，具备跨 session 长期记忆。
 
 适用场景：日常助手、知识管理、项目协作、消息代理，或任何需要 agent 持续在线的场景。
 
@@ -30,9 +30,9 @@
 
 | 组件 | 用途 | 必选 |
 |------|------|------|
-| Claude Code CLI（或其他 agent CLI）| 跑模型 | 是 |
-| Claude 订阅 或 API key | 二选一 | 是 |
-| CLAUDE.md | 行为规则和上下文 | 是 |
+| Claude Code CLI 或 Codex CLI | 跑模型 | 是 |
+| Claude 订阅 / ChatGPT 订阅 / API key | 三选一 | 是 |
+| CLAUDE.md / AGENTS.md | 行为规则和上下文 | 是 |
 | cc-connect | IM ↔ agent 桥接 | 是 |
 | Memos | 跨 session 长期记忆（tag + 全文） | 推荐 |
 | memo-mcp | 无服务器向量记忆库（语义检索） | 可选 |
@@ -42,9 +42,24 @@ cc-connect 支持的 agent（`[projects.agent.type]`）：`claudecode`、`codex`
 
 支持的 IM 平台（`[[projects.platforms]]`）：Telegram、微信个人号（ilink）、企业微信、Discord、Slack、飞书/Lark、钉钉、LINE、微博、QQ（NapCat/OneBot）、QQ 官方 bot。
 
+## 给 AI / Agent 的阅读入口
+
+如果你把这个仓库丢给 Claude Code、Codex、Cursor、Gemini CLI 或其他 agent，让它按仓库帮你部署，优先读这些文件：
+
+1. `README.md`：整体架构、memo-mcp Cloudflare Worker 部署
+2. `docs/cc-connect-setup.md`：IM 桥接配置
+3. `docs/codex-setup.md`：Codex CLI 接入 cc-connect
+4. `docs/memos-setup.md`：Memos 长期记忆
+5. `docs/background-running.md`：systemd / launchd 常驻
+6. `docs/troubleshooting.md`：常见故障
+
+目标是跑通一条链路：`IM → cc-connect → Agent CLI → 工作区规则文件 → 长期记忆`。
+
 ## 快速开始
 
-### 1. 安装 Claude Code
+### 1. 安装 Agent CLI
+
+Claude Code 路线：
 
 ```bash
 # Node.js v18+
@@ -55,14 +70,25 @@ npm install -g @anthropic-ai/claude-code
 claude auth login
 ```
 
-### 2. 工作区 + CLAUDE.md
+Codex 路线：
+
+```bash
+npm install -g @openai/codex
+codex login
+```
+
+### 2. 工作区 + 规则文件
 
 ```bash
 mkdir -p ~/claude-workspace
 cd ~/claude-workspace
 ```
 
-在 `~/claude-workspace/CLAUDE.md` 里定义 Claude 的行为规则、输出风格、可用工具。参考 [examples/CLAUDE.md.example](examples/CLAUDE.md.example)。
+Claude Code 用 `~/claude-workspace/CLAUDE.md` 定义行为规则、输出风格、可用工具。参考 [examples/CLAUDE.md.example](examples/CLAUDE.md.example)。
+
+Codex 用 `~/claude-workspace/AGENTS.md` 定义同类规则。参考 [examples/AGENTS.md.example](examples/AGENTS.md.example)。
+
+Codex 接入细节见 [Codex 配置指南](docs/codex-setup.md)。
 
 ### 3. 接入 IM
 
@@ -125,6 +151,8 @@ memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做
 
 打开 [github.com/sakisakisa-design/claude-code-daily](https://github.com/sakisakisa-design/claude-code-daily) 点 **Fork**，fork 到你自己名下。
 
+如果你让 AI 或命令行替你部署，也可以直接 `git clone` 或下载 ZIP，再用 `wrangler deploy` 部署；只有走 Cloudflare Dashboard 的 GitHub 自动部署时，fork 最省事。
+
 ### 2. 在 Cloudflare 接 GitHub 部署 Worker
 
 dashboard：**Workers & Pages → Create → Workers → Import a repository**
@@ -166,7 +194,9 @@ endpoints: /mcp (streamable http), /sse (legacy)
 
 Workers AI 绑定（embedding 用）和 Vectorize 绑定 Cloudflare 会按 `wrangler.toml` 自动注入，不用手动配。
 
-### 4. 接入 Claude Code
+### 4. 接入 Claude Code / Codex
+
+Claude Code：
 
 ```bash
 claude mcp add --transport http memo-kb https://<你的项目名>.<your-subdomain>.workers.dev/mcp
@@ -185,7 +215,26 @@ claude mcp add --transport http memo-kb https://<你的项目名>.<your-subdomai
 }
 ```
 
-重启 Claude Code，`/mcp` 应该能看到 `memo-kb` 三个工具。
+重启 Claude Code，`/mcp` 应该能看到 `memo-kb` 四个工具。
+
+Codex：
+
+```bash
+codex mcp add memo-kb --url https://<你的项目名>.<your-subdomain>.workers.dev/mcp
+```
+
+或者写到 `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.memo-kb]
+url = "https://<你的项目名>.<your-subdomain>.workers.dev/mcp"
+```
+
+如果你用了 `API_KEY` secret，Codex 可以直接把 token 放 URL 里：
+
+```bash
+codex mcp add memo-kb --url 'https://<你的项目名>.<your-subdomain>.workers.dev/mcp?token=你的token'
+```
 
 ### 5. 使用
 
@@ -222,10 +271,6 @@ delete_memory(ids=["xxx-uuid"])
 
 只有需要"按意思找回"的内容才存这里。零碎日志和 tag 分类走 Memos。
 ```
-
-### 安全和访问控制
-
-`workers.dev` 子域名会被爬虫扫，URL 一旦泄露就能任意读写删你的记忆。两种思路：
 
 ### 安全和访问控制
 

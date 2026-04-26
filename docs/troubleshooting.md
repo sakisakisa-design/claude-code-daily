@@ -64,6 +64,41 @@ Claude Code 只在 `work_dir` 根目录自动加载 `CLAUDE.md`。
 2. 路径是 `config.toml` 里 `work_dir` 指向的目录
 3. 也可在 `~/.claude/CLAUDE.md` 放全局规则
 
+## AGENTS.md 没生效
+
+Codex 读取 `work_dir` 根目录和上级目录里的 `AGENTS.md`。
+
+1. 文件名大写：`AGENTS.md`
+2. 路径是 `config.toml` 里 `work_dir` 指向的目录，或它的上级目录
+3. systemd 启动时确认 `APPROVED_DIRECTORY` 和你手动测试 Codex 的目录一致
+
+## cc-connect 找不到 `codex`
+
+systemd 的 `PATH` 通常比交互 shell 短。先查 Codex 位置：
+
+```bash
+command -v codex
+```
+
+然后在 `~/cc-connect/start.sh` 里加：
+
+```bash
+export PATH="$HOME/.npm-global/bin:/usr/local/bin:/usr/bin:$PATH"
+```
+
+重启 cc-connect。
+
+## Codex 工具调用一直卡住
+
+`mode = "suggest"` 会等待确认。24 小时 bot 改成：
+
+```toml
+[projects.agent.options]
+mode = "full-auto"
+```
+
+如果你确定机器已经隔离，才用 `mode = "yolo"`。
+
 ## Memos 连接失败
 
 Docker 容器状态：

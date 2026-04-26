@@ -7,6 +7,7 @@
 ## 前置条件
 
 - 已安装 Claude Code CLI 并登录
+- 如果接 Codex，已安装 Codex CLI 并登录，见 [codex-setup.md](codex-setup.md)
 - 对应平台的 bot 凭证（Telegram 去 @BotFather `/newbot`）
 
 ## 1. 安装
@@ -96,6 +97,8 @@ exec $HOME/cc-connect/cc-connect --config $HOME/.cc-connect/config.toml
 
 ## 权限模式
 
+下面是 Claude Code 的权限模式。
+
 `[projects.agent.options].mode` 取值：
 
 | mode | 行为 |
@@ -108,6 +111,17 @@ exec $HOME/cc-connect/cc-connect --config $HOME/.cc-connect/config.toml
 | `dontAsk` | 未预授权的一律拒绝 |
 
 24 小时无人值守选 `bypassPermissions`——它等于给 Claude 对该 `work_dir` 下的一切放行。如果你不放心，用 `default` + `allowed_tools` 白名单。
+
+如果 `[projects.agent].type = "codex"`，`mode` 用 Codex 的四档：
+
+| mode | 行为 |
+|---|---|
+| `suggest` | 每次工具调用都要确认 |
+| `auto-edit` | 自动批准文件编辑，shell 仍受限 |
+| `full-auto` | 自动执行，保留工作区沙箱 |
+| `yolo` | 跳过审批和沙箱 |
+
+Codex 常驻建议先用 `full-auto`。完整示例见 [codex-setup.md](codex-setup.md)。
 
 ## 常用命令（在 IM 里发）
 
