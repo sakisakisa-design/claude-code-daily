@@ -76,6 +76,22 @@ cd ~/claude-workspace
 
 见 [后台运行指南](docs/background-running.md)。
 
+## Claude API 接入
+
+订阅（Pro / Max）走 `claude auth login` 就够了，下面是没订阅、想按量付费的几条路。
+
+### 在 Cloudflare AI Gateway 买 Claude API
+
+适合 Anthropic 直充不通、或想顺便拿 Gateway 的统计、缓存、限流能力的人。最低 10 美元起充，5% 手续费，价格官方价不加。拿到的 endpoint 和 `cfut_` token 可以喂给 Claude Code、Claude Desktop 或自己的脚本。
+
+完整教程：[docs/cf-claude-api.md](docs/cf-claude-api.md)，含 prompt cache 命中坑（必须加 `cf-aig-skip-cache: true` 且 system 转数组带 `cache_control`）。
+
+### Claude Desktop 接入第三方 API
+
+Claude Desktop 自带 **Cowork on 3P** 模式，可以不登 Anthropic 账号、直接用 CF AI Gateway / Vertex / Bedrock / Foundry 跑。GUI 用户、被 ban 账号、或者公司统一用 Vertex 的场景适用。
+
+完整教程：[docs/claude-desktop-3p.md](docs/claude-desktop-3p.md)，含个人路径（Apply locally）和企业 MDM 路径的入口区别。
+
 ## memo-mcp 无服务器向量记忆库
 
 memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做向量存储、Workers AI 做 embedding。和 Memos 互补：Memos 走 tag 和全文搜索，memo-mcp 走语义检索。
