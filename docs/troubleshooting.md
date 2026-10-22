@@ -13,7 +13,7 @@ ps -eo pid,etime,cmd | grep -iE "cc-connect|telegram|claude-plugins-official/tel
 常见来源：
 
 - 旧的 python bot 或官方 telegram plugin 还在跑 —— 停掉
-- Claude Code 自己的 telegram plugin（`~/.claude/plugins/cache/claude-plugins-official/telegram`）被启用 —— 在 `work_dir/.claude/settings.json` 里把 `"telegram@claude-plugins-official"` 设为 `false`，或直接清空 `enabledPlugins`
+- Claude Code 官方的 Telegram channel 插件（`~/.claude/plugins/cache/claude-plugins-official/telegram`）被启用，或者有个 `claude --channels plugin:telegram@claude-plugins-official` 进程在跑 —— 停掉那个进程，在 `work_dir/.claude/settings.json` 里把 `"telegram@claude-plugins-official"` 设为 `false`，或直接清空 `enabledPlugins`。两边都想要的话，给官方插件另建一个 bot
 - 同一台机上起了两个 cc-connect 拉同一个 token —— 合成一个 project
 
 ## 回复显示成"长流式预览 + 后续多条短消息"
@@ -72,6 +72,19 @@ Codex 读取 `work_dir` 根目录和上级目录里的 `AGENTS.md`。
 2. 路径是 `config.toml` 里 `work_dir` 指向的目录，或它的上级目录
 3. systemd 启动时确认 `APPROVED_DIRECTORY` 和你手动测试 Codex 的目录一致
 
+## cc-connect 找不到 `claude`
+
+官方安装脚本把 `claude` 装在 `~/.local/bin`，systemd 默认的 `PATH` 里没有它。先确认位置：
+
+```bash
+command -v claude
+claude doctor
+```
+
+然后在 `~/cc-connect/start.sh` 和 service 文件的 `PATH` 里加上 `$HOME/.local/bin`（[examples/cc-connect.service](../examples/cc-connect.service) 已经加了），重启 cc-connect。
+
+以前用 npm 装过的，`npm uninstall -g @anthropic-ai/claude-code` 卸掉旧的，免得 PATH 里先找到一个不再更新的版本。
+
 ## cc-connect 找不到 `codex`
 
 systemd 的 `PATH` 通常比交互 shell 短。先查 Codex 位置：
@@ -100,6 +113,8 @@ mode = "full-auto"
 如果你确定机器已经隔离，才用 `mode = "yolo"`。
 
 ## Memos 连接失败
+
+> Memos 方案已停更，新部署用 [Aelios](https://github.com/wusaki0723/Aelios)，见 README。下面留给还在用的人。
 
 Docker 容器状态：
 

@@ -71,6 +71,8 @@ curl https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_name}/anthropic/
 
 返回正常的 `content` 数组就通了。Gateway 上能在 **Logs** 里看到这次调用。
 
+> `anthropic-version` 这个头由客户端决定。2026-10-21 出了新版本 `2026-10-21`：带 `temperature` / `top_p` / `top_k` 会直接 400，`document` 块不能直接放在 assistant 消息里，user 消息里的 text 块不能带 `citations`。上面用 `2023-06-01` 照样能用；新版官方 SDK（Python 2.0、TypeScript 1.0 起）默认发新版本，换 SDK 前先把这三个采样参数删掉。详见[官方迁移说明](https://platform.claude.com/docs/en/api/migration-2026-10-21)。
+
 ### 6. 接 Claude Code
 
 `~/.claude/settings.json` 或环境变量都行。环境变量更省事：
@@ -130,9 +132,9 @@ cache 建立后**约 1 秒传播延迟**，第一次请求建好 cache 之后，
 
 第一次建立后等 1 秒再打后续请求，之后稳定命中。脚本里测 cache 命中率必须考虑这个间隔。
 
-### 4. Haiku 的额外限制
+### 4. 前缀太短不会进 cache
 
-Haiku 要求至少 **2048 tokens** 的 prefix 才会进入 cache。短 system 不会被 cache，省下来的钱只够买根冰棍。
+每个模型都有最短可缓存长度，从 512 到 4096 tokens 不等，比如 Haiku 4.5 要至少 **4096 tokens** 的 prefix 才会进 cache。短 system 不会被 cache，省下来的钱只够买根冰棍。各模型的门槛看[官方 prompt caching 文档](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)。
 
 ### 验证
 
@@ -143,16 +145,9 @@ Haiku 要求至少 **2048 tokens** 的 prefix 才会进入 cache。短 system �
 
 两者都不为 0 就对了。
 
-### 价格参考（Opus 4.6）
+### 价格
 
-| 项 | 单价 |
-|----|------|
-| input | $5/M |
-| cache_creation | $6.25/M |
-| cache_read | $0.5/M |
-| output | $25/M |
-
-cache 命中后 input 部分变成原价的 10%。长 system + 多轮对话场景，cache 是省钱大头。
+单价各模型不一样，以[官方价格页](https://platform.claude.com/docs/en/about-claude/pricing)为准。规律是：写 cache 比原价略贵（5 分钟的比 1 小时的便宜），读 cache 只要原价的一小部分，有的新模型读价比例还更低。长 system + 多轮对话场景，cache 是省钱大头。
 
 ## 反代 Worker（可选）
 
@@ -175,7 +170,8 @@ https://gateway.ai.cloudflare.com/v1/{ACCOUNT}/{GATEWAY}/anthropic 。
 3) /v1/models 直接返回写死的 Claude 模型列表（Anthropic 没这个端点）；
 4) 如果 system 字段是字符串且长度大于 200，自动转成
    [{type:"text",text:...,cache_control:{type:"ephemeral",ttl:"5m"}}]
-   数组格式以确保命中 prompt cache。
+   数组格式以确保命中 prompt cache；
+5) 删掉请求体里的 temperature、top_p、top_k（新模型只收默认值，2026-10-21 版本 API 连默认值也不收）。
 ```
 
 部署完之后，客户端把 `ANTHROPIC_BASE_URL` 指向你的 Worker URL，`ANTHROPIC_API_KEY` 随便填一个（或者你在 Worker 里加自己的鉴权层）。
@@ -190,6 +186,9 @@ Gateway 默认超时 100 秒，长上下文 + 长输出可能超。dashboard 里
 
 **第三方客户端不让传 CF header**
 `cf-aig-authorization` 不接受时，把 token 放到 `x-api-key` 一样过。`cf-aig-skip-cache` 没法传时，去 dashboard 把整个 gateway 的 **Cache** 关掉。
+
+**报 400，说 temperature 不支持 / deprecated**
+新模型只收这几个采样参数的默认值，`2026-10-21` 版本的 API 连默认值也不收。客户端或反代里把 `temperature`、`top_p`、`top_k` 删掉就好。
 
 **充值显示 pending**
 CF credits 充值偶尔卡几分钟到半小时，不是异常，等就好。

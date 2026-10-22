@@ -62,7 +62,7 @@ Claude Desktop 默认走 Anthropic 自家账号登录。它还有一个**第三�
 - Provider: `Gateway`
 - Endpoint URL: `https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_name}/anthropic`
 - API key: `cfut_xxx`
-- Model list: 至少填一个，比如 `claude-sonnet-4-5`、`claude-opus-4-7`、`claude-haiku-4-5`，多个用逗号分隔
+- Model list: 至少填一个，多个用逗号分隔。填 Anthropic 原始的模型 ID，当前有哪些看[官方模型列表](https://platform.claude.com/docs/en/about-claude/models/overview)
 - Organization UUID: 任意 UUID（v4 即可），用于本地标识，不上传
 
 **Vertex / Bedrock / Foundry** 的具体字段照官方说明填，每个 provider 进了配置窗口会自动列出它需要的字段。
@@ -114,7 +114,7 @@ Claude Desktop 里有个 Code 标签页（内嵌 Claude Code）。3P 模式下�
 检查 Configuration Report，多半是 provider 字段没识别。Provider 名字是大小写敏感的：`Gateway` / `Vertex` / `Bedrock` / `Foundry`。
 
 **模型列表不对**
-Claude Desktop 会按你填的 model list 出下拉框。模型名要和后端 provider 接受的格式一致：CF Gateway 用 Anthropic 原始名（`claude-sonnet-4-5`），Bedrock 用 Bedrock 格式（`anthropic.claude-sonnet-4-5-20250929-v1:0`），Vertex 类似。
+Claude Desktop 会按你填的 model list 出下拉框。模型名要和后端 provider 接受的格式一致：CF Gateway 用 Anthropic 原始 ID，Bedrock 要带 `anthropic.` 前缀，Vertex 的写法看它自己的文档。各家的 ID 对照在[官方模型列表](https://platform.claude.com/docs/en/about-claude/models/overview)里。
 
 **网络层报错**
 配置窗口的 **Egress Requirements** 区会列出当前配置需要打通的所有 host。本地装机基本不用管，企业网络环境下让 IT 把这些 host 加白名单。
