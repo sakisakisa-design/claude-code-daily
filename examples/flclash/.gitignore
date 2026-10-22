@@ -1,0 +1,10 @@
+# Local credentials and generated state
+*.local.yaml
+*.local.yml
+*.bak
+.env
+.env.*
+proxy_providers/
+cache.db
+.venv/
+__pycache__/

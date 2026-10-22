@@ -232,6 +232,10 @@ Anthropic 在 2026-10-21 发了新的 API 版本（请求头 `anthropic-version:
 
 Claude Code 默认每次工具调用都要手动批准。无人值守场景下这会卡住。cc-connect 在 `[projects.agent.options].mode` 里统一控制，`bypassPermissions` 全放行、`default` 要 IM 里回"允许"、`auto` 由 Claude 判断、`dontAsk` 没预授权的一律拒绝，见 [cc-connect 配置指南](docs/cc-connect-setup.md#权限模式)。
 
+## FlClash 网络配置示例
+
+[examples/flclash](examples/flclash/) 提供 Mac 和 Android 的固定出口分流模板，区分 Identity、日常主力和手动备用。公开文件不含节点、订阅或凭据，需要先在本地填写自己的出口，再导入使用。
+
 ## 常见问题
 
 见 [troubleshooting](docs/troubleshooting.md)。
