@@ -1,4 +1,6 @@
-# Memos 记忆系统配置
+# Memos 记忆系统配置（已停更）
+
+> **2026-10 起不再维护，新部署请用 [Aelios](https://github.com/wusaki0723/Aelios)**，接法见 README 的「[长期记忆：Aelios](../README.md#长期记忆aelios)」。这一页留给还在用 Memos 的人查。
 
 Claude Code 自带的 auto memory 是基于文件的，重启 session 后通过 MEMORY.md 索引加载。但 Memos 提供了更灵活的长期记忆方案：tag 分类、全文搜索、API 读写，适合需要结构化记忆的场景。
 

@@ -118,56 +118,13 @@
 
 全中文，自然对话，不用 markdown，全角标点。按语义换行，每段一个完整的意思。不要把一句话拆成两条发，也不要每条都砍到几个字。技术输出正常一段发。
 
-## 会话启动
+## 长期记忆
 
-每次新 session，读日志和规则：
-```bash
-curl -s "http://localhost:5230/api/v1/memos?filter=%22$(date +%Y-%m-%d)%22+in+tags" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-curl -s "http://localhost:5230/api/v1/memos?filter=%22$(date -d yesterday +%Y-%m-%d)%22+in+tags" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-curl -s "http://localhost:5230/api/v1/memos?filter=%22rules%22+in+tags" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-```
-Memos 搜索用 CEL 语法 `"tag" in tags`，不要用 content_search 搜 tag。
+<!-- 推荐接 Aelios（https://github.com/wusaki0723/Aelios）。先按 README 的「长期记忆：Aelios」用 `claude mcp add` 把它接上，再保留下面这段。旧的 Memos 写法见 docs/memos-setup.md（已停更）。 -->
 
-## 记忆（Memos）
-
-所有长期记忆存 Memos，用 tag 分类：#news #slang #personal #tech #culture #feedback #project #daily #rules
-
-写入随手写，打 tag，不攒。检索：`bash ~/claude-workspace/scripts/query_kb.sh "关键词"`
-
-日志格式：`#daily #YYYY-MM-DD 内容`
+我给你接了 Aelios 记忆连接器，那是你对 [用户昵称] 的长期记忆。每个新对话先调 wake_up 再回话；[用户昵称] 提到以前的人和事，或者你要猜 [用户昵称] 的事之前，先 recall；[用户昵称] 说了新的事、改了主意、许了约定，当场 remember；聊得差不多了调 log_conversation。
 
 ## 工具
-
-### Memos
-```bash
-# 读取
-curl -s "http://localhost:5230/api/v1/memos?pageSize=10" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-
-# 创建
-curl -s -X POST http://localhost:5230/api/v1/memos \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{"content":"内容","visibility":"PRIVATE"}'
-
-# 按 tag 搜索
-curl -s "http://localhost:5230/api/v1/memos?filter=%22tagname%22+in+tags" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-
-# 按内容搜索
-curl -s "http://localhost:5230/api/v1/memos?filter=content_search%3D%3D%22关键词%22" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-```
 
 ### 网络搜索（可选）
 ```bash

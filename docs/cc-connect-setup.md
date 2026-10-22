@@ -12,16 +12,22 @@
 
 ## 1. 安装
 
-Linux arm64 / amd64：
+npm 装（推荐，Linux / Mac 都行）：
 
 ```bash
-curl -sL https://github.com/chenhg5/cc-connect/releases/latest/download/cc-connect-v1.3.2-linux-amd64.tar.gz | tar -xz
-# arm64 换成 cc-connect-v1.3.2-linux-arm64.tar.gz
-mv cc-connect-v1.3.2-linux-amd64 ~/cc-connect/cc-connect
-chmod +x ~/cc-connect/cc-connect
+npm install -g cc-connect
+cc-connect --version
 ```
 
-其他平台（Mac、Windows）去 [releases](https://github.com/chenhg5/cc-connect/releases) 页面选对应包。
+Mac 也可以 `brew install cc-connect`。不想装 Node 的，去 [releases](https://github.com/chenhg5/cc-connect/releases) 页面下对应平台的二进制，文件名带版本号，以页面上的为准。
+
+> 2026-10 之前这里写的是一条钉死 v1.3.2 的下载链接，现在已经 404 了。按上面任一方式装最新版就行，旧配置文件照常能用。
+
+再建一个放启动脚本的目录，后面的 `start.sh` 和 systemd 都用它：
+
+```bash
+mkdir -p ~/cc-connect
+```
 
 ## 2. 配置
 
@@ -52,6 +58,7 @@ type = "claudecode"
 [projects.agent.options]
 work_dir = "${APPROVED_DIRECTORY}"
 mode = "bypassPermissions"         # 无人值守用；见下方权限说明
+# reasoning_effort = "high"        # 可选：思考强度 low / medium / high / max
 
 [[projects.platforms]]
 type = "telegram"
@@ -85,10 +92,12 @@ APPROVED_DIRECTORY=/home/ubuntu/claude-workspace
 
 ```bash
 #!/usr/bin/env bash
+# systemd 的 PATH 很短，把 claude（~/.local/bin）和 npm 全局目录加进来
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 set -a
 . $HOME/.cc-connect/env
 set +a
-exec $HOME/cc-connect/cc-connect --config $HOME/.cc-connect/config.toml
+exec cc-connect --config $HOME/.cc-connect/config.toml
 ```
 
 `chmod +x ~/cc-connect/start.sh`，直接跑 `./start.sh` 测试。看到 `telegram: connected bot=xxx` 和 `platform ready` 就通了。去 Telegram 给 bot 发 `/whoami` 验证。

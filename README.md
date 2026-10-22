@@ -4,6 +4,13 @@
 
 适用场景：日常助手、知识管理、项目协作、消息代理，或任何需要 agent 持续在线的场景。
 
+> **2026-10 更新**
+>
+> - 长期记忆改推 [Aelios](https://github.com/wusaki0723/Aelios)。这个仓库原来的 memo-mcp 就是 Aelios 最早的样子，现在 memo-mcp 和 Memos 两套方案都停更了，教程挪进 `docs/` 留档，代码没删。
+> - Claude Code 改用官方安装脚本，npm 装法官方已经标了弃用。
+> - cc-connect 改用 npm 安装，原来钉死 v1.3.2 的下载链接已经失效。
+> - 补了官方 Channels、Remote Control 和 cc-connect 的对比，加了一段 [Claude Projects](#claude-projects) 介绍，以及 2026-10-21 新 API 版本的注意事项。
+
 ## 架构
 
 ```
@@ -12,7 +19,7 @@
 │   Claude Code / Codex / Gemini / Kimi ...     │
 ├──────────────────────────────────────────────┤
 │  CLAUDE.md（行为规则 / 工具配置 / 上下文）    │
-│  Memory（auto memory 或 Memos）               │
+│  Memory（Aelios 或 auto memory）              │
 ├──────────────────────────────────────────────┤
 │              cc-connect                       │
 │  （进程内同时接多个 agent × 多个 IM）         │
@@ -33,27 +40,72 @@
 | Claude Code CLI 或 Codex CLI | 跑模型 | 是 |
 | Claude 订阅 / ChatGPT 订阅 / API key | 三选一 | 是 |
 | CLAUDE.md / AGENTS.md | 行为规则和上下文 | 是 |
-| cc-connect | IM ↔ agent 桥接 | 是 |
-| Memos | 跨 session 长期记忆（tag + 全文） | 推荐 |
-| memo-mcp | 无服务器向量记忆库（语义检索） | 可选 |
-| systemd + tmux | 后台常驻 + 自动重启 | 推荐 |
+| cc-connect | IM ↔ agent 桥接（只用 Claude Code 的也可以看看官方 Channels，见下一节） | 是 |
+| [Aelios](https://github.com/wusaki0723/Aelios) | 跨 session、跨客户端的长期记忆，跑在你自己的 Cloudflare 上 | 推荐 |
+| systemd（Mac 用 launchd） | 后台常驻 + 自动重启 | 推荐 |
+| Memos / memo-mcp | 旧的记忆方案，已停更，只留档 | 否 |
 
-cc-connect 支持的 agent（`[projects.agent.type]`）：`claudecode`、`codex`、`cursor`、`gemini`、`qoder`、`opencode`、`kimi`、`iflow`、任何 ACP 协议兼容的 agent。
+cc-connect 支持的 agent（`[projects.agent].type`）：`claudecode`、`codex`、`cursor`、`gemini`、`copilot`、`pi`、`qoder`、`opencode`、`kimi`、`iflow`，以及任何 ACP 协议兼容的 agent。
 
-支持的 IM 平台（`[[projects.platforms]]`）：Telegram、微信个人号（ilink）、企业微信、Discord、Slack、飞书/Lark、钉钉、LINE、微博、QQ（NapCat/OneBot）、QQ 官方 bot。
+支持的 IM 平台（`[[projects.platforms]]`）：Telegram、微信个人号（ilink）、企业微信、Discord、Slack、飞书/Lark、钉钉、LINE、微博、QQ（NapCat/OneBot）、QQ 官方 bot、Matrix、Google Chat 等，完整列表看 cc-connect 的 [config.example.toml](https://github.com/chenhg5/cc-connect/blob/main/config.example.toml)。
+
+## 官方的同类功能
+
+Claude 官方现在也有几样跟 cc-connect 同类的东西，按需要挑：
+
+| 方案 | 是什么 | 适合 |
+|------|--------|------|
+| cc-connect | 第三方桥接器，一个进程接多个 agent × 多个 IM | 要接微信、飞书、QQ 这类国内 IM，或者要同时挂 Codex 等别家 agent |
+| [Channels](https://code.claude.com/docs/en/channels)（研究预览） | 官方插件，把 Telegram / Discord / iMessage 的消息推进一个正在跑的 Claude Code 会话，回复也从原渠道发回去 | 只用 Claude Code，只用这三个 IM |
+| [Remote Control](https://code.claude.com/docs/en/remote-control) | 用手机上的 Claude App 或 claude.ai/code 直接操作电脑上的 Claude Code 会话 | 不需要 IM，用官方 App 就够了 |
+| [Claude Projects](#claude-projects)（公开测试） | 官方托管的「一个常驻主聊 + 一堆干活的线程」，跑在云端，带项目记忆 | 不想自己维护服务器，事情跨好几天、几条线一起推 |
+
+几个要注意的地方：
+
+- Channels 要用 claude.ai 账号或 Console API key 登录，插件要先装 [Bun](https://bun.sh)，启动时加参数，比如 `claude --channels plugin:telegram@claude-plugins-official`。会话关了就收不到消息，所以要常驻一样得配 systemd 或 tmux。
+- Remote Control 只认订阅登录（Pro / Max / Team / Enterprise），不支持 API key；`ANTHROPIC_BASE_URL` 指向别的地址（网关、代理）时也用不了。
+- cc-connect 和官方 Telegram 插件不要用同一个 bot token，两边会抢消息，见 [troubleshooting](docs/troubleshooting.md)。
+
+### Claude Projects
+
+[Projects](https://code.claude.com/docs/en/claude-projects) 是 claude.ai/code 里新出的玩法，想做的事跟这个仓库很像：一个一直在线、记得来龙去脉的 Claude，你随时丢活给它。区别是它全部由官方托管，不用自己搭服务器。
+
+它是这样组织的：
+
+- **一个常驻的主聊**：你在项目里说的每句话先到它这里。它负责回话、派活、记事，小问题当场答，要动手的活交给线程。
+- **每件活开一个线程**：线程是独立的云端会话，有自己的上下文和工具（命令行、读写文件、GitHub 仓库和 PR、你 claude.ai 账号上的 MCP 连接器），干完把结论报回主聊。几个线程可以同时跑，关了电脑云端线程也照样跑。
+- **项目记忆和项目说明**：要求、决定、踩过的坑写进项目记忆（一个 `MEMORY.md` 索引加若干小文件），每个新线程开工先读；项目说明（最多 16000 字）每个线程都会带上。
+- **手机上就能用**：claude.ai/code、桌面 App 的 Code 页、Claude 手机 App 都能进。Overview 里看哪些线程干完了、哪些 PR 能审、哪个在等你回话。
+- **要用本机的东西时**：让某个线程通过 Remote Control 跑在你自己的电脑上（电脑得开着，`claude remote-control` 或桌面 App 得开着），其他线程照样在云端。
+
+用下来的感受：重活都在线程里烧，主聊只收结论，所以主聊能聊很久都不卡；反过来，查一行代码也常常要开个线程、再点进去看结果，只想快问快答会嫌慢。适合跨好几天、几条线同时推、需要有人替你记住来龙去脉的事。
+
+跟本仓库这套比：
+
+| | 本仓库（cc-connect + 自己的机器） | Claude Projects |
+|------|------|------|
+| 跑在哪 | 你自己的服务器或 Mac mini | Anthropic 的云端，个别线程可以挂到本机 |
+| 从哪聊 | Telegram、微信、飞书等 IM | 官方网页、桌面 App、手机 App |
+| 记忆 | Aelios、CLAUDE.md，自己管 | 官方的项目记忆；线程里也能用 Aelios 这类 claude.ai 连接器 |
+| 模型 | Claude Code、Codex、Gemini 等都行 | 只有 Claude |
+| 计费 | 订阅或 API 都行 | 只走 Pro / Max 订阅额度，几个线程一起跑，比单个会话用得快 |
+| 谁能用 | 谁都能搭 | Pro / Max 公开测试，逐步放开；侧栏没有 Projects 就是还没轮到，可以[排队](https://claude.com/form/projects)；Team / Enterprise 暂时没有 |
+
+不想维护服务器、也不需要接国内 IM 的，直接用 Projects 更省事。要接微信飞书、要挂别家模型、要数据全在自己手里的，还是用这套。
 
 ## 给 AI / Agent 的阅读入口
 
 如果你把这个仓库丢给 Claude Code、Codex、Cursor、Gemini CLI 或其他 agent，让它按仓库帮你部署，优先读这些文件：
 
-1. `README.md`：整体架构、memo-mcp Cloudflare Worker 部署
+1. `README.md`：整体架构、Aelios 长期记忆怎么接
 2. `docs/cc-connect-setup.md`：IM 桥接配置
 3. `docs/codex-setup.md`：Codex CLI 接入 cc-connect
-4. `docs/memos-setup.md`：Memos 长期记忆
-5. `docs/background-running.md`：systemd / launchd 常驻
-6. `docs/troubleshooting.md`：常见故障
+4. `docs/background-running.md`：systemd / launchd 常驻
+5. `docs/troubleshooting.md`：常见故障
 
-目标是跑通一条链路：`IM → cc-connect → Agent CLI → 工作区规则文件 → 长期记忆`。
+`docs/memo-mcp.md` 和 `docs/memos-setup.md` 是停更的旧方案，新部署不用看。
+
+目标是跑通一条链路：`IM → cc-connect → Agent CLI → 工作区规则文件 → 长期记忆（Aelios）`。
 
 ## 快速开始
 
@@ -62,13 +114,14 @@ cc-connect 支持的 agent（`[projects.agent.type]`）：`claudecode`、`codex`
 Claude Code 路线：
 
 ```bash
-# Node.js v18+
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo bash -
-sudo apt-get install -y nodejs
-
-npm install -g @anthropic-ai/claude-code
+# 官方安装脚本，装到 ~/.local/bin/claude，之后自动更新
+curl -fsSL https://claude.ai/install.sh | bash
 claude auth login
 ```
+
+Mac 也可以 `brew install --cask claude-code`。原来的 `npm install -g @anthropic-ai/claude-code` 官方已经标了弃用，以前用 npm 装的，可以先 `npm uninstall -g @anthropic-ai/claude-code` 再跑上面的脚本。装好后跑一次 `claude doctor` 看安装是否正常。
+
+systemd 里跑的时候 `PATH` 要包含 `~/.local/bin`，[examples/cc-connect.service](examples/cc-connect.service) 已经加上了。
 
 Codex 路线：
 
@@ -94,13 +147,60 @@ Codex 接入细节见 [Codex 配置指南](docs/codex-setup.md)。
 
 见 [cc-connect 配置指南](docs/cc-connect-setup.md)。
 
-### 4. 长期记忆（可选）
+### 4. 长期记忆（推荐）
 
-见 [Memos 配置指南](docs/memos-setup.md)。如果想要"按意思找回"的语义检索，看下面 memo-mcp 一节。
+见下面的「[长期记忆：Aelios](#长期记忆aelios)」。
 
 ### 5. 后台常驻
 
 见 [后台运行指南](docs/background-running.md)。
+
+## 长期记忆：Aelios
+
+[Aelios](https://github.com/wusaki0723/Aelios) 是跑在你自己 Cloudflare 账号上的记忆网关。换窗口、换客户端、换模型，记忆都跟着走；有网页后台，记了什么都看得见，能改、能删、能撤回；夜里会自动把聊天整理成长期记忆。
+
+部署照它的 README 做：先 Fork，再在 Cloudflare 后台导入你的 Fork，加一个 `CHATBOX_API_KEY`，三步。装好后有两种接法。
+
+### 订阅登录（Pro / Max）：接 MCP
+
+```bash
+claude mcp add --scope user --transport http aelios "https://<Worker 地址>/mcp?token=<CHATBOX_API_KEY>"
+```
+
+`--scope user` 让所有目录的会话都能用，cc-connect 在 `work_dir` 里起的会话也包括在内。重启后 `/mcp` 里能看到 `aelios`。
+
+模型不会自己想起来用记忆，在工作区的 `CLAUDE.md` 里写一段（Aelios README 里给的原话）：
+
+```markdown
+## 长期记忆
+
+我给你接了 Aelios 记忆连接器，那是你对我的长期记忆。每个新对话先调 wake_up 再回我；我提到以前的人和事，或者你要猜我的事之前，先 recall；我说了新的事、改了主意、许了约定，当场 remember；聊得差不多了调 log_conversation。
+```
+
+想每条消息自动召回、对话自动写回，不靠模型自己调工具，用 Aelios 仓库里的 [Claude Code Hook](https://github.com/wusaki0723/Aelios/tree/main/integrations/claude-code)。
+
+Codex 一样接 MCP：
+
+```bash
+codex mcp add aelios --url 'https://<Worker 地址>/mcp?token=<CHATBOX_API_KEY>'
+```
+
+### API 计费：把请求指到 Aelios 网关
+
+在 `~/.cc-connect/env`（或你的 shell）里把 `ANTHROPIC_BASE_URL` 指到 Aelios 的助手地址，`ANTHROPIC_API_KEY` 填 `CHATBOX_API_KEY`，具体地址和模型名写法看 Aelios README 第 3 步。这样每句对话都经过 Aelios，自动记、自动召回，不用模型自己调工具。
+
+代价是请求走你在 Cloudflare AI Gateway 存的 key 或 credits 计费，不走订阅额度；这种设置下 Remote Control 和 Artifacts 也用不了。
+
+### 以前装过 memo-mcp 的
+
+Aelios 默认也用名叫 `memo-kb` 的 Vectorize 索引，但要 1024 维，memo-mcp 建的是 768 维。同一个 Cloudflare 账号里旧索引有数据时，Aelios 的部署会停下来报错，不会替你删。两个办法选一个：
+
+- **给 Aelios 换个索引名**：在 Aelios 那个 Worker 的 **Settings → Build → Build Variables and Secrets** 里加 `CMP_VECTORIZE_NAME`，填一个新名字（比如 `aelios-kb`），再重新部署。旧的 memo-mcp 照常能用。
+- **旧记忆不要了**：`npx wrangler vectorize delete memo-kb`。删了找不回来，先想清楚。
+
+旧记忆想搬过去：memo-mcp 没有导出功能，可以让 Claude 用 `search_memory` 按主题把要紧的捞出来，整理成一行一条的列表，再到 Aelios 后台「更多 → 导入导出」里导入，导入时可以选直接写进库还是先进审核页。
+
+旧教程留档：[docs/memo-mcp.md](docs/memo-mcp.md)、[docs/memos-setup.md](docs/memos-setup.md)，都不再更新。
 
 ## Claude API 接入
 
@@ -118,279 +218,19 @@ Claude Desktop 自带 **Cowork on 3P** 模式，可以不登 Anthropic 账号、
 
 完整教程：[docs/claude-desktop-3p.md](docs/claude-desktop-3p.md)，含个人路径（Apply locally）和企业 MDM 路径的入口区别。
 
-## memo-mcp 无服务器向量记忆库
+### 2026-10-21 新 API 版本
 
-memo-mcp 是一个跑在 Cloudflare Worker 上的 MCP server，用 Vectorize 做向量存储、Workers AI 做 embedding。和 Memos 互补：Memos 走 tag 和全文搜索，memo-mcp 走语义检索。
+Anthropic 在 2026-10-21 发了新的 API 版本（请求头 `anthropic-version: 2026-10-21`）。自己写脚本、反代的要注意：
 
-适用场景：跨设备共享记忆、按"意思"检索而不是按关键词、不想自己维护服务器。
+- 请求里带 `temperature`、`top_p`、`top_k` 会直接 400，哪怕填的是默认值。
+- `document` 块不能直接放在 assistant 消息里；user 消息里的 text 块不能带非空的 `citations`。
+- 新版官方 SDK（Python 2.0、TypeScript 1.0 起）默认就发新版本。老的 `2023-06-01` 照样能用，不升也不会坏。
 
-### 和 Memos 的区别
-
-| 特性 | Memos | memo-mcp |
-|------|-------|----------|
-| 部署 | 自托管（Docker/二进制） | Cloudflare Worker（无服务器） |
-| 检索 | 全文 + tag | 向量语义 |
-| 状态 | SQLite 文件 | Vectorize 索引 + DO SQLite |
-| 跨设备 | 需要公网/Tailscale | 自带 HTTPS endpoint |
-| 成本 | 服务器电费 | 免费额度内 0 元 |
-| 协议 | REST API | MCP（streamable HTTP / SSE） |
-
-两者可并存。零碎日志和 tag 分类走 Memos，需要"按意思找回"的内容走 memo-mcp。
-
-### 你会得到什么
-
-- 一个 `https://memo-mcp.<你的子域>.workers.dev/mcp` 的 MCP 端点
-- 四个工具：`write_memory`、`search_memory`、`get_memory`、`delete_memory`
-- 全程在 Cloudflare 网页 dashboard 操作，不用装 wrangler、不用本地 Node
-
-### 准备
-
-只要一个 Cloudflare 账号（免费）和一个 GitHub 账号。
-
-### 1. Fork 仓库
-
-打开 [github.com/sakisakisa-design/claude-code-daily](https://github.com/sakisakisa-design/claude-code-daily) 点 **Fork**，fork 到你自己名下。
-
-如果你让 AI 或命令行替你部署，也可以直接 `git clone` 或下载 ZIP，再用 `wrangler deploy` 部署；只有走 Cloudflare Dashboard 的 GitHub 自动部署时，fork 最省事。
-
-### 2. 在 Cloudflare 接 GitHub 部署 Worker
-
-dashboard：**Workers & Pages → Create → Workers → Import a repository**
-
-第一次会让你授权 Cloudflare 访问 GitHub，照做。
-
-授权后选刚才 fork 的 `claude-code-daily` 仓库，配置三栏：
-
-- **Project name**: 项目名 = URL 子域名前缀，**强烈建议用随机串**（例如 `kb-` 加几个随机字符，或者 `openssl rand -hex 4` 生一段），不要用 `memo-mcp` 这种好猜的。这是你的第一道安全线 — workers.dev 的子域名会被爬虫扫，名字越独特越难命中。
-- **Production branch**: `main`
-- **Build command**:
-  ```
-  cd examples/memo-mcp && npm install
-  ```
-- **Deploy command**（注意 `--name` 后面填和你上面项目名一样的值）：
-  ```
-  cd examples/memo-mcp && (npx wrangler vectorize create memo-kb --dimensions=768 --metric=cosine || true) && (npx wrangler vectorize create-metadata-index memo-kb --property-name=tags --type=string || true) && npx wrangler deploy --name 你的项目名
-  ```
-- **Advanced setting**: 不用动
-
-点 **Save and deploy**。Cloudflare 会自己 cd 进 `examples/memo-mcp` 目录跑这两条命令：先建 Vectorize 索引（已存在就跳过，所以可以反复部署），再部署 Worker。几十秒搞定。
-
-之后每次 push 到 fork 的 main 分支，自动重新部署。
-
-### 3. 拿 endpoint 验证
-
-部署完成后 dashboard 顶部会显示：
-
-```
-https://<你的项目名>.<your-subdomain>.workers.dev
-```
-
-浏览器打开这个 URL，应该看到：
-
-```
-memo-mcp ok
-endpoints: /mcp (streamable http), /sse (legacy)
-```
-
-Workers AI 绑定（embedding 用）和 Vectorize 绑定 Cloudflare 会按 `wrangler.toml` 自动注入，不用手动配。
-
-### 4. 接入 Claude Code / Codex
-
-Claude Code：
-
-```bash
-claude mcp add --transport http memo-kb https://<你的项目名>.<your-subdomain>.workers.dev/mcp
-```
-
-或者直接写到 `~/.claude/settings.json`：
-
-```json
-{
-  "mcpServers": {
-    "memo-kb": {
-      "type": "http",
-      "url": "https://<你的项目名>.<your-subdomain>.workers.dev/mcp"
-    }
-  }
-}
-```
-
-重启 Claude Code，`/mcp` 应该能看到 `memo-kb` 四个工具。
-
-Codex：
-
-```bash
-codex mcp add memo-kb --url https://<你的项目名>.<your-subdomain>.workers.dev/mcp
-```
-
-或者写到 `~/.codex/config.toml`：
-
-```toml
-[mcp_servers.memo-kb]
-url = "https://<你的项目名>.<your-subdomain>.workers.dev/mcp"
-```
-
-如果你用了 `API_KEY` secret，Codex 可以直接把 token 放 URL 里：
-
-```bash
-codex mcp add memo-kb --url 'https://<你的项目名>.<your-subdomain>.workers.dev/mcp?token=你的token'
-```
-
-### 5. 使用
-
-让 Claude 自己用，对话里说"记一下…"或"搜一下我之前说过…"，它会自动调对应工具。
-
-手动调示例：
-
-```
-write_memory(content="用 wrangler tail 看 worker 实时日志", tags=["cf","ops"])
-# → id=xxx-uuid
-
-search_memory(query="怎么看 worker 日志", topK=3)
-# → 每行一个 JSON：{"id":"...","score":0.83,"content":"...","tags":[...]}
-
-search_memory(query="部署相关", tag="cf")
-
-get_memory(ids=["xxx-uuid","yyy-uuid"])
-
-# 更新已有记忆：拿 id 重新 write_memory（自动 upsert 覆盖）
-write_memory(id="xxx-uuid", content="新内容", tags=["cf","ops"])
-
-delete_memory(ids=["xxx-uuid"])
-```
-
-### 6. 在 CLAUDE.md 里引导用法（可选）
-
-```markdown
-## 长期记忆
-
-走 memo-kb（MCP 向量库）：
-- 重要事实、决策、配置 → write_memory，加 tags
-- 想不起来某事是怎么解决的 → search_memory
-- 失效信息 → delete_memory
-
-只有需要"按意思找回"的内容才存这里。零碎日志和 tag 分类走 Memos。
-```
-
-### 安全和访问控制
-
-`workers.dev` 子域名会被爬虫扫，URL 一旦泄露就能任意读写删你的记忆。三种思路按强度从弱到强：
-
-#### 方案 A：URL 当密码（最低限度）
-
-部署时项目名用足够随机的串（上面步骤 2 已经强调），URL 形如 `kb-7g3h.<subdomain>.workers.dev`，靠枚举命中概率很低。无需配置任何 secret。
-
-注意：
-- 部署后**别在公开地方贴你的 URL**（聊天记录、截图、博客）
-- fork 仓库可以保持公开，因为项目名不在代码里（在 CF dashboard 里）
-- 想换 URL 就在 CF dashboard 重新建一个 worker，新名字，旧的删掉
-
-#### 方案 B：URL 加 ?token= 查询串（推荐，兼容所有客户端）
-
-跟方案 A 一样不用配 OAuth，但多一道密钥。Claude.ai connector / Claude Code / 任何只接受单个 URL 的 MCP 客户端都能用。
-
-**步骤**：
-
-1. 生成 token：`openssl rand -hex 32`（Windows 用 [random.org](https://www.random.org/strings/?num=1&len=32&digits=on&loweralpha=on)）
-2. CF dashboard → Worker 详情 → **Settings → Variables and Secrets → Add → Type: Secret**：Name `API_KEY`，Value 你的 token
-3. 客户端用带 token 的完整 URL：
-   ```
-   https://<你的项目名>.<your-subdomain>.workers.dev/mcp?token=你的token
-   ```
-   - **Claude.ai connector**：URL 那栏直接填上面这串（含 `?token=`）
-   - **Claude Code** `~/.claude/settings.json`：
-     ```json
-     {
-       "mcpServers": {
-         "memo-kb": {
-           "type": "http",
-           "url": "https://<...>/mcp?token=你的token"
-         }
-       }
-     }
-     ```
-
-**注意**：URL 里有 token 意味着 token 可能进 CF 的访问日志，所以这个 token 不算最高安全级别。但比裸 URL 强很多，且兼容性最好。
-
-#### 方案 C：HTTP header 鉴权（最强，但 Claude.ai 不兼容）
-
-Claude.ai 自定义 connector 走 OAuth 2.0，不会传 header；只在 Claude Code / 自己脚本里用 MCP 时可以叠这一道。
-
-设了 `API_KEY` secret 后，请求带下面任一 header 都通过：
-- `x-api-key: <key>`
-- `Authorization: Bearer <key>`
-- `Authorization: Basic <base64(任何用户名:key 或 key:任何密码)>`
-
-Claude Code `~/.claude/settings.json`：
-
-```json
-{
-  "mcpServers": {
-    "memo-kb": {
-      "type": "http",
-      "url": "https://<你的项目名>.<your-subdomain>.workers.dev/mcp",
-      "headers": { "x-api-key": "你的密钥" }
-    }
-  }
-}
-```
-
-> 验证：`curl -i https://<...>/mcp` 应 401；`curl -i -H "x-api-key: 你的密钥" https://<...>/mcp` 应不是 401。
-
-#### 注意：方案 B 和 C 共用同一个 `API_KEY` secret
-
-设一次 secret，三种方式（query/header/basic）任意一个对的就放行。所以可以同时给手机用 query、给本地脚本用 header。
-
-#### 更严
-
-要 SSO / 邮箱白名单可以叠 Cloudflare Access。但 Access 需要交互式登录，跟无人值守的 MCP 不太搭。
-
-### 常见问题
-
-**部署日志里报 `vectorize index not found` 或 `binding ... not bound`**
-索引还没建，或者名字不是 `memo-kb`。回到 dashboard 的 AI → Vectorize 里检查，名字必须和 `wrangler.toml` 里的 `index_name` 完全一致。
-
-**Claude 看不到 memo-kb 工具**
-- 确认 Claude Code 版本支持 streamable HTTP transport
-- 看 `~/.claude/logs/` 里 MCP 连接报错
-- 旧版本退回 SSE：URL 改成 `.../sse`
-
-**搜出来的结果不相关**
-- 写的时候 content 太短，embedding 信息量不够。每条至少一句完整的话
-- 检索时 query 写完整问题，别只给关键词
-- 同语种检索更准
-
-**怎么批量导入已有内容**
-临时本地装一次 wrangler（`npm i -g wrangler && wrangler login`），用 `wrangler vectorize insert` 直接灌数据，绕过 Worker。或者写个脚本循环 HTTP 调 `/mcp` 的 write_memory。
-
-**改了代码 dashboard 没自动部署**
-检查 fork 仓库的 push 是不是到了 main 分支；Cloudflare 在 Worker 详情 → **Builds** 里能看到每次构建日志。
-
-### 成本预估
-
-| 项目 | 免费额度 | 满负载场景 |
-|------|----------|-----------|
-| Workers 请求 | 10 万/天 | 一天 1000 次远没用完 |
-| Workers AI | 10000 神经元/天 | embedding 一次 ~1 神经元 |
-| Vectorize 存储 | 500 万维度 | 6500 条 × 768 维 |
-| Vectorize 查询 | 3000 万维度/月 | 一天 1000 次完全够 |
-| Durable Objects | 1G-s/天 | MCP session 状态，几乎不消耗 |
-
-个人用基本 0 元。重度用一个月几块到十几块封顶。
-
-### 进阶
-
-改完代码 push 到 fork，Cloudflare 自动重新部署。可以折腾的方向：
-
-- 加 `list_tags`：从 metadata 聚合所有 tag
-- 换更强的 embedding：`@cf/baai/bge-m3`（1024 维）召回更好但贵一点。换之前要在 dashboard 重建一个对应维度的 Vectorize 索引
-- 把检索结果作为 hook 注入 Claude 上下文，参考 [memos-setup.md](docs/memos-setup.md) 的 `query_kb.sh`
-
-代码在 [examples/memo-mcp](examples/memo-mcp)。
+官方迁移说明：[migration-2026-10-21](https://platform.claude.com/docs/en/api/migration-2026-10-21)。
 
 ## 权限
 
-Claude Code 默认每次工具调用都要手动批准。无人值守场景下这会卡住。cc-connect 在 `[projects.agent.options].mode` 里统一控制，`bypassPermissions` 全放行、`default` 要 IM 里回"允许"、`auto` 由 Claude 判断，见 [cc-connect 配置指南](docs/cc-connect-setup.md#权限模式)。
+Claude Code 默认每次工具调用都要手动批准。无人值守场景下这会卡住。cc-connect 在 `[projects.agent.options].mode` 里统一控制，`bypassPermissions` 全放行、`default` 要 IM 里回"允许"、`auto` 由 Claude 判断、`dontAsk` 没预授权的一律拒绝，见 [cc-connect 配置指南](docs/cc-connect-setup.md#权限模式)。
 
 ## 常见问题
 
@@ -400,7 +240,8 @@ Claude Code 默认每次工具调用都要手动批准。无人值守场景下�
 
 - [Claude Code](https://github.com/anthropics/claude-code) — Anthropic 官方 CLI
 - [cc-connect](https://github.com/chenhg5/cc-connect) — agent × IM 桥接器
-- [Memos](https://github.com/usememos/memos) — 笔记/记忆系统
+- [Aelios](https://github.com/wusaki0723/Aelios) — 跑在 Cloudflare 上的长期记忆网关
+- [Memos](https://github.com/usememos/memos) — 笔记/记忆系统（旧方案）
 
 ## License
 

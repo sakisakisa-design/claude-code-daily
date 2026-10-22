@@ -26,37 +26,11 @@
 
 ## 长期记忆
 
-如果配置了 memo-kb MCP：
+如果配置了 Aelios MCP（`codex mcp add aelios --url 'https://<Worker 地址>/mcp?token=<CHATBOX_API_KEY>'`）：
 
-- 重要事实、长期偏好、项目决策写入 `write_memory`。
-- 忘记某个背景时先用 `search_memory` 搜。
-- 过期内容用 `delete_memory` 清理。
-- 只有需要按意思找回的内容存 memo-kb。
+- 每个新对话先调 `wake_up` 再回话。
+- 用户提到以前的人和事，或者要猜用户的事之前，先 `recall`。
+- 用户说了新的事、改了主意、许了约定，当场 `remember`。
+- 聊得差不多了调 `log_conversation`。
 
-如果配置了 Memos REST API：
-
-- 每次新 session 先读今天和昨天的 `#daily`。
-- 长期信息按 tag 存：`#personal #project #tech #daily #rules`。
-- 搜 tag 用 CEL：`"tagname" in tags`。
-
-## 可用工具示例
-
-Memos 读取：
-
-```bash
-curl -s "http://localhost:5230/api/v1/memos?pageSize=10" \
-  -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-  -H "Accept: application/json"
-```
-
-Memos 写入：
-
-```bash
-jq -n --arg content "#project 内容" '{content:$content, visibility:"PRIVATE"}' \
-  | curl -s -X POST http://localhost:5230/api/v1/memos \
-    -H "Authorization: Bearer YOUR_MEMOS_TOKEN" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json" \
-    -d @-
-```
-
+旧的 memo-kb、Memos 写法已停更，见 `docs/memo-mcp.md` 和 `docs/memos-setup.md`。

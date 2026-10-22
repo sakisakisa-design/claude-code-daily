@@ -1,9 +1,11 @@
 # 自托管 Artifacts：Worker + D1 给 agent 一个自己的控制台
 
-Claude Code 在 2026-06-18 上线了 Artifacts（beta）：把一次 coding session 发布成 claude.ai 上的一个私有页面。好用，但有三个硬约束：
+Claude Code 在 2026-06-18 上线了 Artifacts（beta）：把一次 coding session 发布成 claude.ai 上的一个私有页面。好用，但有两个硬约束：
 
 1. **数据在 Anthropic 服务器上**。页面内容托管在 claude.ai。beta 期间只有 Team / Enterprise 能用，影响面还小；2026-07-04 起对个人订阅开放，当天各群就出现大量「Claude 下意识把 session 内容发布上去了」的案例——对不想把私人数据放第三方服务器的人是硬伤。
 2. **CSP 全封网**：页面禁止一切 fetch / XHR / WebSocket，只能是静态快照，不能有持久状态。
+
+> **2026-10 补充**：官方 Artifacts 后来松了一些。页面可以在打开时通过你 claude.ai 账号上的 MCP 连接器拉实时数据（每个看的人用自己的连接器），可以给看的人提供文件下载，同组织的人能在页面上评论、让 Claude 回复，还多了 Slides、Docs、Design 几种模板。但它仍然是没有后端的单页，fetch 只能打到自己的源，数据仍然放在 Anthropic，本地配的 MCP 服务器页面也调不到。所以下面这套「数据放自己这、页面读写自己状态」的理由还成立。官方现状看 [Artifacts 文档](https://code.claude.com/docs/en/artifacts)。
 
 这两条反过来就是自托管方案的需求清单：数据放自己域名下、页面可以读写自己的状态。整套东西一个 Cloudflare Worker（免费额度）就够了。本文是通用模式教程，照着做你会得到：一个手机上打开的私人控制台，agent 可以往里持续交付「会记住状态的小应用」。
 

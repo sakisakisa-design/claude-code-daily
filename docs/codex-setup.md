@@ -62,8 +62,8 @@ type = "codex"
 [projects.agent.options]
 work_dir = "${APPROVED_DIRECTORY}"
 mode = "full-auto"
-model = "gpt-5.3-codex"
-reasoning_effort = "medium"
+# model = "..."              # 不写就用 Codex 自己的默认模型；要指定就填 `codex` 里 /model 列出来的名字
+reasoning_effort = "medium"  # 可选值见 cc-connect 的 config.example.toml
 
 [[projects.platforms]]
 type = "telegram"
@@ -102,28 +102,24 @@ OPENAI_API_KEY=sk-xxx
 OPENAI_BASE_URL=https://example.com/v1
 ```
 
-## 5. 接入 memo-mcp
+## 5. 接入长期记忆（Aelios）
 
-部署好 README 里的 memo-mcp 后，给 Codex 加 MCP：
-
-```bash
-codex mcp add memo-kb --url https://<你的项目名>.<your-subdomain>.workers.dev/mcp
-```
-
-如果 Worker 设置了 `API_KEY` secret：
+部署好 [Aelios](https://github.com/wusaki0723/Aelios) 后，给 Codex 加 MCP：
 
 ```bash
-codex mcp add memo-kb --url 'https://<你的项目名>.<your-subdomain>.workers.dev/mcp?token=你的token'
+codex mcp add aelios --url 'https://<Worker 地址>/mcp?token=<CHATBOX_API_KEY>'
 ```
 
 也可以手写 `~/.codex/config.toml`：
 
 ```toml
-[mcp_servers.memo-kb]
-url = "https://<你的项目名>.<your-subdomain>.workers.dev/mcp?token=你的token"
+[mcp_servers.aelios]
+url = "https://<Worker 地址>/mcp?token=<CHATBOX_API_KEY>"
 ```
 
-然后重启 cc-connect。
+然后重启 cc-connect，再在 `AGENTS.md` 里写一段让它记得用（参考 [examples/AGENTS.md.example](../examples/AGENTS.md.example)）。
+
+还在用旧的 memo-mcp 的，把上面的地址换成 memo-mcp 的就行，见 [memo-mcp.md](memo-mcp.md)（已停更）。
 
 ## 6. 常见坑
 

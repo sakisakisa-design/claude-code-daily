@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=ubuntu
 Group=ubuntu
-Environment="PATH=/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/home/ubuntu/.local/bin:/home/ubuntu/.bun/bin:/home/ubuntu/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="HOME=/home/ubuntu"
 WorkingDirectory=/home/ubuntu/cc-connect
 
