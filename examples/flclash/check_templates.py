@@ -200,7 +200,7 @@ class ChainChecks(unittest.TestCase):
     def test_no_credentials_or_automatic_entry(self):
         self.assertEqual(self.doc["proxies"], [])
         self.assertEqual(self.doc["proxy-providers"], {})
-        self.assertEqual(set(self.groups), {"Claude", "GPT", "FixedExit", "Entry"})
+        self.assertEqual(set(self.groups), {"Claude", "GPT", "Google Play", "FixedExit", "Entry"})
         self.assertEqual(len(self.groups), len(self.doc["proxy-groups"]))
         self.assertTrue(all(g["type"] == "select" for g in self.groups.values()))
         self.assertEqual(self.groups["Entry"]["proxies"], ["REJECT"])
@@ -234,6 +234,22 @@ class ChainChecks(unittest.TestCase):
             rules.index("DOMAIN-SUFFIX,ts.net,FixedExit"),
             rules.index("GEOSITE,private,DIRECT"),
         )
+
+    def test_google_play_cannot_match_cn_direct_first(self):
+        self.assertEqual(self.groups["Google Play"]["proxies"], ["Entry", "FixedExit"])
+        rules = self.rules
+        google = rules.index("DOMAIN-KEYWORD,google,Google Play")
+        self.assertLess(google, rules.index("GEOSITE,cn,DIRECT"))
+        self.assertLess(google, rules.index("GEOIP,CN,DIRECT,no-resolve"))
+        self.assertLess(google, rules.index("DOMAIN-SUFFIX,googlevideo.com,Entry"))
+        quic = rules.index("AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-KEYWORD,google)),REJECT")
+        udp = rules.index("AND,((NETWORK,UDP),(DOMAIN-KEYWORD,google)),Entry")
+        self.assertLess(quic, udp)
+        self.assertLess(udp, google)
+        for domain in ("gvt1.com", "gvt2.com", "gvt3.com", "ggpht.com", "gstatic.com"):
+            self.assertLess(rules.index(f"DOMAIN-SUFFIX,{domain},Google Play"), rules.index("GEOSITE,cn,DIRECT"))
+        for package in ("com.android.vending", "com.google.android.gms"):
+            self.assertIn(f"PROCESS-NAME,{package},Google Play", rules)
 
     def test_datadog_follows_claude_and_blocks_only_its_udp(self):
         host = "http-intake.logs.us5.datadoghq.com"

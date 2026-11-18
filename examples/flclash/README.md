@@ -1,6 +1,6 @@
 # FlClash 链式代理与固定出口分流
 
-推荐先看 **[链式代理教程：机场接入，自建 VPS 出口](CHAIN.md)**。它配套一份新的 [Android 链式模板](android-chain.example.yaml)：手动选择机场入口，用 `dialer-proxy` 接到自己的固定 VPS，内置订阅备用解决冷启动，并只拦截 Claude 相关 UDP，保留其他应用的日常 UDP 分流。
+推荐先看 **[链式代理教程：机场接入，自建 VPS 出口](CHAIN.md)**。它配套一份新的 [Android 链式模板](android-chain.example.yaml)：手动选择机场入口，用 `dialer-proxy` 接到自己的固定 VPS，内置订阅备用解决冷启动，按应用/域名拦截 Claude UDP，并对 Google Play 单独处理 QUIC 与下载分流，保留其他应用的日常 UDP 分流。
 
 下面保留原来的固定出口与备用组方案，适合不需要链式的用户。两种模板独立使用，不要将整份 YAML 相互叠加。
 
@@ -13,7 +13,7 @@
 | 文件 | 用途 |
 | --- | --- |
 | [CHAIN.md](CHAIN.md) | 新版链式教程：手动入口、订阅冷启动、UDP 与遥测分流、验证和回退 |
-| [android-chain.example.yaml](android-chain.example.yaml) | 新版 Android 链式空模板，四个手动选择组，按教程填自己的节点 |
+| [android-chain.example.yaml](android-chain.example.yaml) | 新版 Android 链式空模板，五个手动选择组，按教程填自己的节点 |
 | [macos.example.yaml](macos.example.yaml) | Mac 模板，包含 Claude 桌面进程规则，文件内 TUN 默认关闭 |
 | [android.example.yaml](android.example.yaml) | Android 模板，使用 Claude、Google Play、Google Wallet 包名规则，文件内 TUN 开启 |
 | [check_templates.py](check_templates.py) | 离线检查空模板、策略组引用与路由约束 |
