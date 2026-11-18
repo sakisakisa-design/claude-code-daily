@@ -190,5 +190,80 @@ class TemplateChecks(unittest.TestCase):
             yaml.load("port: 7890\nport: 1082\n", Loader=UniqueLoader)
 
 
+class ChainChecks(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.doc = load_template("android-chain")
+        cls.rules = cls.doc["rules"]
+        cls.groups = {g["name"]: g for g in cls.doc["proxy-groups"]}
+
+    def test_no_credentials_or_automatic_entry(self):
+        self.assertEqual(self.doc["proxies"], [])
+        self.assertEqual(self.doc["proxy-providers"], {})
+        self.assertEqual(set(self.groups), {"Claude", "GPT", "FixedExit", "Entry"})
+        self.assertEqual(len(self.groups), len(self.doc["proxy-groups"]))
+        self.assertTrue(all(g["type"] == "select" for g in self.groups.values()))
+        self.assertEqual(self.groups["Entry"]["proxies"], ["REJECT"])
+        self.assertEqual(self.groups["FixedExit"]["proxies"], ["REJECT"])
+        for name in ("Claude", "GPT"):
+            self.assertEqual(self.groups[name]["proxies"], ["FixedExit", "Entry"])
+        for rule in self.rules:
+            self.assertIn(rule_target(rule), set(self.groups) | BUILTINS)
+        self.assertEqual(self.rules[-1], "MATCH,FixedExit")
+
+    def test_scoped_udp_and_tailnet_do_not_fall_through(self):
+        rules = self.rules
+        self.assertNotIn("NETWORK,UDP,REJECT", rules)
+        udp_entry = rules.index("NETWORK,UDP,Entry")
+        for rule in [
+            "AND,((NETWORK,UDP),(PROCESS-NAME,com.anthropic.claude)),REJECT",
+            "AND,((NETWORK,UDP),(DOMAIN-KEYWORD,claude)),REJECT",
+            "AND,((NETWORK,UDP),(DOMAIN-KEYWORD,anthropic)),REJECT",
+            "AND,((NETWORK,UDP),(DOMAIN-SUFFIX,clau.de)),REJECT",
+            "AND,((NETWORK,UDP),(DOMAIN-SUFFIX,ts.net)),REJECT",
+            "AND,((NETWORK,UDP),(IP-CIDR,100.64.0.0/10)),REJECT",
+        ]:
+            self.assertLess(rules.index(rule), udp_entry)
+        self.assertLess(rules.index("AND,((NETWORK,UDP),(GEOSITE,cn)),DIRECT"), udp_entry)
+        self.assertLess(udp_entry, rules.index("PROCESS-NAME,com.openai.chatgpt,GPT"))
+        self.assertLess(
+            rules.index("IP-CIDR,100.64.0.0/10,FixedExit,no-resolve"),
+            rules.index("GEOSITE,private,DIRECT"),
+        )
+        self.assertLess(
+            rules.index("DOMAIN-SUFFIX,ts.net,FixedExit"),
+            rules.index("GEOSITE,private,DIRECT"),
+        )
+
+    def test_datadog_follows_claude_and_blocks_only_its_udp(self):
+        host = "http-intake.logs.us5.datadoghq.com"
+        rules = self.rules
+        self.assertLess(
+            rules.index(f"AND,((NETWORK,UDP),(DOMAIN,{host})),REJECT"),
+            rules.index("NETWORK,UDP,Entry"),
+        )
+        self.assertLess(
+            rules.index(f"DOMAIN,{host},Claude"),
+            rules.index("DOMAIN-SUFFIX,datadoghq.com,FixedExit"),
+        )
+        for platform in ("macos", "android"):
+            self.assertIn(f"DOMAIN,{host},Identity", load_template(platform)["rules"])
+
+    def test_dns_and_listener_keep_explicit_boundaries(self):
+        doc = self.doc
+        self.assertFalse(doc["allow-lan"])
+        self.assertEqual(doc["bind-address"], "127.0.0.1")
+        self.assertFalse(doc["ipv6"])
+        self.assertTrue(doc["tun"]["enable"])
+        self.assertTrue(doc["tun"]["strict-route"])
+        self.assertIn("IP-CIDR6,::/0,REJECT,no-resolve", self.rules)
+        dns = doc["dns"]
+        self.assertTrue(dns["respect-rules"])
+        self.assertNotIn("fallback", dns)
+        self.assertTrue(all(s.endswith("#FixedExit") for s in dns["nameserver"]))
+        self.assertTrue(all(s.endswith("#DIRECT") for s in dns["proxy-server-nameserver"]))
+        self.assertEqual(dns["nameserver-policy"]["+.lan"], "system")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

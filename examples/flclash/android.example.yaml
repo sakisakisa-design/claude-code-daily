@@ -169,6 +169,8 @@ rules:
 - PROCESS-NAME,com.anthropic.claude,Identity
 - PROCESS-NAME,com.android.vending,Identity
 - PROCESS-NAME,com.google.android.apps.walletnfcrel,Identity
+# Claude Code operational telemetry; follows the same fixed identity exit.
+- DOMAIN,http-intake.logs.us5.datadoghq.com,Identity
 - GEOSITE,anthropic,Identity
 - DOMAIN-SUFFIX,anthropic.com,Identity
 - DOMAIN-SUFFIX,clau.de,Identity
