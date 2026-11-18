@@ -1,0 +1,148 @@
+# Public Android FlClash / mihomo chain template. Read CHAIN.md first.
+# No working nodes or subscription credentials. Replace REJECT only in a *.local.yaml copy.
+# Entry = manually selected airport first hop; FixedExit = your VPS reached through Entry.
+# Only Claude UDP is blocked globally by app/domain. Other UDP needs a capable outbound.
+mixed-port: 7890
+allow-lan: false
+bind-address: 127.0.0.1
+mode: rule
+log-level: info
+ipv6: false
+find-process-mode: always
+unified-delay: true
+tcp-concurrent: true
+geodata-mode: true
+profile:
+  store-selected: true
+  store-fake-ip: true
+tun:
+  enable: true
+  stack: mixed
+  auto-route: true
+  auto-detect-interface: true
+  strict-route: true
+  dns-hijack:
+    - any:53
+    - tcp://any:53
+dns:
+  enable: true
+  listen: 127.0.0.1:1053
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  respect-rules: true
+  prefer-h3: false
+  use-hosts: true
+  use-system-hosts: true
+  # Resolve proxy hostnames independently so DNS does not depend on the chain itself.
+  default-nameserver:
+    - https://223.5.5.5/dns-query
+  proxy-server-nameserver:
+    - https://223.5.5.5/dns-query#DIRECT
+  nameserver:
+    - https://1.1.1.1/dns-query#FixedExit
+    - https://1.0.0.1/dns-query#FixedExit
+  fake-ip-filter:
+    - localhost
+    - +.local
+    - +.lan
+    - +.home.arpa
+  nameserver-policy:
+    localhost: system
+    +.local: system
+    +.lan: system
+    +.home.arpa: system
+# Add only your VPS node(s) here, with dialer-proxy: Entry. See CHAIN.md.
+proxies: []
+# Add your provider and its private payload here. See CHAIN.md.
+proxy-providers: {}
+proxy-groups:
+  - name: Claude
+    type: select
+    proxies: [FixedExit, Entry]
+  - name: GPT
+    type: select
+    proxies: [FixedExit, Entry]
+  - name: FixedExit
+    type: select
+    proxies: [REJECT]
+  - name: Entry
+    type: select
+    proxies: [REJECT]
+rules:
+  - IP-CIDR6,::/0,REJECT,no-resolve
+  # Port 53 DNS is intercepted above; refuse remaining app DNS/DoT bypasses.
+  - DST-PORT,53,REJECT
+  - DST-PORT,853,REJECT
+  # FixedExit in this recipe is TCP-only. Never let tailnet UDP fall through to Entry/DIRECT.
+  - AND,((NETWORK,UDP),(DOMAIN-SUFFIX,ts.net)),REJECT
+  - AND,((NETWORK,UDP),(IP-CIDR,100.64.0.0/10)),REJECT
+  # Scope the UDP block to Claude; do not block every application's UDP.
+  - AND,((NETWORK,UDP),(PROCESS-NAME,com.anthropic.claude)),REJECT
+  - AND,((NETWORK,UDP),(DOMAIN-KEYWORD,anthropic)),REJECT
+  - AND,((NETWORK,UDP),(DOMAIN-KEYWORD,claude)),REJECT
+  - AND,((NETWORK,UDP),(DOMAIN-SUFFIX,clau.de)),REJECT
+  - AND,((NETWORK,UDP),(DOMAIN,http-intake.logs.us5.datadoghq.com)),REJECT
+  # The VPS must itself be a member of this tailnet. Add your private DNS/hosts locally.
+  - DOMAIN-SUFFIX,ts.net,FixedExit
+  - IP-CIDR,100.64.0.0/10,FixedExit,no-resolve
+  - DOMAIN-SUFFIX,tailscale.com,FixedExit
+  - DOMAIN-SUFFIX,tailscale.io,FixedExit
+  - DOMAIN,localhost,DIRECT
+  - DOMAIN-SUFFIX,local,DIRECT
+  - DOMAIN-SUFFIX,lan,DIRECT
+  - DOMAIN-SUFFIX,home.arpa,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  # Handle other UDP before the TCP-only FixedExit policies; no implicit fallback.
+  - AND,((NETWORK,UDP),(GEOSITE,cn)),DIRECT
+  - AND,((NETWORK,UDP),(GEOIP,CN)),DIRECT
+  - NETWORK,UDP,Entry
+  - PROCESS-NAME,com.anthropic.claude,Claude
+  - PROCESS-NAME,com.openai.chatgpt,GPT
+  # The intake host is documented for Claude Code, and follows the Claude policy here.
+  - DOMAIN,http-intake.logs.us5.datadoghq.com,Claude
+  - DOMAIN-SUFFIX,anthropic.com,Claude
+  - DOMAIN-SUFFIX,claude.ai,Claude
+  - DOMAIN-SUFFIX,claude.com,Claude
+  - DOMAIN-SUFFIX,clau.de,Claude
+  - DOMAIN-SUFFIX,claudemcpclient.com,Claude
+  - DOMAIN-SUFFIX,claudemcpcontent.com,Claude
+  - DOMAIN-SUFFIX,claudeusercontent.com,Claude
+  - DOMAIN-KEYWORD,anthropic,Claude
+  - DOMAIN-KEYWORD,claude,Claude
+  - DOMAIN-SUFFIX,openai.com,GPT
+  - DOMAIN-SUFFIX,chatgpt.com,GPT
+  - DOMAIN-SUFFIX,oaistatic.com,GPT
+  - DOMAIN-SUFFIX,oaiusercontent.com,GPT
+  - DOMAIN-SUFFIX,chatgpt.livekit.cloud,GPT
+  - DOMAIN-SUFFIX,auth0.com,FixedExit
+  - DOMAIN-SUFFIX,arkoselabs.com,FixedExit
+  - DOMAIN,challenges.cloudflare.com,FixedExit
+  - DOMAIN-SUFFIX,hcaptcha.com,FixedExit
+  - DOMAIN-SUFFIX,withpersona.com,FixedExit
+  - DOMAIN-SUFFIX,stripe.com,FixedExit
+  - DOMAIN-SUFFIX,statsigapi.net,FixedExit
+  - DOMAIN-SUFFIX,statsig.com,FixedExit
+  - DOMAIN-SUFFIX,sentry.io,FixedExit
+  - DOMAIN-SUFFIX,datadoghq.com,FixedExit
+  - DOMAIN-SUFFIX,browser-intake-datadoghq.com,FixedExit
+  - DOMAIN-SUFFIX,ipify.org,FixedExit
+  - DOMAIN-SUFFIX,ipinfo.io,FixedExit
+  - DOMAIN-SUFFIX,browserleaks.com,FixedExit
+  - DOMAIN-SUFFIX,dnsleaktest.com,FixedExit
+  - DOMAIN-SUFFIX,youtube.com,Entry
+  - DOMAIN-SUFFIX,youtu.be,Entry
+  - DOMAIN-SUFFIX,ytimg.com,Entry
+  - DOMAIN-SUFFIX,googlevideo.com,Entry
+  - DOMAIN-SUFFIX,netflix.com,Entry
+  - DOMAIN-SUFFIX,nflxvideo.net,Entry
+  - DOMAIN-SUFFIX,twitch.tv,Entry
+  - DOMAIN-SUFFIX,ttvnw.net,Entry
+  - GEOSITE,private,DIRECT
+  - GEOSITE,cn,DIRECT
+  - GEOIP,CN,DIRECT,no-resolve
+  - MATCH,FixedExit

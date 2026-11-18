@@ -170,6 +170,8 @@ rules:
 - PROCESS-NAME,Claude Helper (Renderer),Identity
 - PROCESS-NAME,Claude Helper (GPU),Identity
 - PROCESS-NAME,Claude Helper (Plugin),Identity
+# Claude Code operational telemetry; follows the same fixed identity exit.
+- DOMAIN,http-intake.logs.us5.datadoghq.com,Identity
 - GEOSITE,anthropic,Identity
 - DOMAIN-SUFFIX,anthropic.com,Identity
 - DOMAIN-SUFFIX,clau.de,Identity

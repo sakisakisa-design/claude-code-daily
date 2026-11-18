@@ -1,4 +1,8 @@
-# FlClash 固定出口与日常分流模板
+# FlClash 链式代理与固定出口分流
+
+推荐先看 **[链式代理教程：机场接入，自建 VPS 出口](CHAIN.md)**。它配套一份新的 [Android 链式模板](android-chain.example.yaml)：手动选择机场入口，用 `dialer-proxy` 接到自己的固定 VPS，内置订阅备用解决冷启动，并只拦截 Claude 相关 UDP，保留其他应用的日常 UDP 分流。
+
+下面保留原来的固定出口与备用组方案，适合不需要链式的用户。两种模板独立使用，不要将整份 YAML 相互叠加。
 
 给 Mac 和 Android 各留一份可改的配置。Claude、Google、ChatGPT、支付和验证相关请求走 `Identity`，日常流量走 `Proxy`，自建备用和订阅备用分开手动选择。
 
@@ -8,11 +12,13 @@
 
 | 文件 | 用途 |
 | --- | --- |
+| [CHAIN.md](CHAIN.md) | 新版链式教程：手动入口、订阅冷启动、UDP 与遥测分流、验证和回退 |
+| [android-chain.example.yaml](android-chain.example.yaml) | 新版 Android 链式空模板，四个手动选择组，按教程填自己的节点 |
 | [macos.example.yaml](macos.example.yaml) | Mac 模板，包含 Claude 桌面进程规则，文件内 TUN 默认关闭 |
 | [android.example.yaml](android.example.yaml) | Android 模板，使用 Claude、Google Play、Google Wallet 包名规则，文件内 TUN 开启 |
 | [check_templates.py](check_templates.py) | 离线检查空模板、策略组引用与路由约束 |
 
-两份模板都保留域名/IP 分流、固定出口 DNS、局域网直连、国内直连和日常代理规则。节点专属地址规则已经移除，加入自己的节点后按需补充。
+原来的两份模板都保留域名/IP 分流、固定出口 DNS、局域网直连、国内直连和日常代理规则。节点专属地址规则已经移除，加入自己的节点后按需补充。
 
 ## 先做本地副本
 
@@ -145,10 +151,10 @@ python3 -m venv .venv
 .venv/bin/python check_templates.py
 ```
 
-检查针对提交的空模板，填写过真实节点的本地副本不属于它的测试目标。目前没有完成这些公开模板的实际内核加载或 Android 真机验证。
+检查针对提交的三份空模板，填写过真实节点的本地副本不属于它的测试目标。三份公开模板均通过 mihomo 配置加载检查；占位节点不能用于联网，这不代表 Android 真机或读者自有线路已验证。链式模板的验证步骤见 [链式教程](CHAIN.md#6-验证与回退)。
 
 ## 参考
 
-参考了 [one-exit](https://github.com/wquguru/one-exit) 的固定出口分流思路及 Android 包名规则。该项目的住宅 HTTP 链需要用户另行提供代理凭据，本目录不包含住宅服务、链式中转或其覆写脚本。不要直接叠加含占位节点的原版脚本。
+参考了 [one-exit](https://github.com/wquguru/one-exit) 的固定出口分流思路及 Android 包名规则。该项目的住宅 HTTP 链需要用户另行提供代理凭据，原模板不包含住宅服务或其覆写脚本；本次新增的 [链式教程](CHAIN.md) 使用读者自己的机场与 VPS，通过 mihomo 原生 `dialer-proxy` 连接。不要直接叠加含占位节点的原版脚本。
 
 配置字段以 [mihomo 文档](https://wiki.metacubex.one/) 为准，App 覆写和 VPN 行为参照所使用的 [FlClash 版本](https://github.com/chen08209/FlClash)。
