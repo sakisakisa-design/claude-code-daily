@@ -1,7 +1,8 @@
 # Public Android FlClash / mihomo chain template. Read CHAIN.md first.
 # No working nodes or subscription credentials. Replace REJECT only in a *.local.yaml copy.
 # Entry = manually selected airport first hop; FixedExit = your VPS reached through Entry.
-# Only Claude UDP is blocked globally by app/domain. Other UDP needs a capable outbound.
+# Claude UDP is blocked by app/domain; Google/Play UDP/443 is blocked for TCP fallback.
+# Other UDP needs a capable outbound.
 mixed-port: 7890
 allow-lan: false
 bind-address: 127.0.0.1
@@ -63,6 +64,9 @@ proxy-groups:
   - name: GPT
     type: select
     proxies: [FixedExit, Entry]
+  - name: Google Play
+    type: select
+    proxies: [Entry, FixedExit]
   - name: FixedExit
     type: select
     proxies: [REJECT]
@@ -74,6 +78,19 @@ rules:
   # Port 53 DNS is intercepted above; refuse remaining app DNS/DoT bypasses.
   - DST-PORT,53,REJECT
   - DST-PORT,853,REJECT
+  # Google domains must precede CN/DIRECT, including services.googleapis.cn.
+  # QUIC can fall back to TCP; other Google UDP uses the UDP-capable airport path.
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-KEYWORD,google)),REJECT
+  - AND,((NETWORK,UDP),(DOMAIN-KEYWORD,google)),Entry
+  - DOMAIN-KEYWORD,google,Google Play
+  # Play download hosts without "google" in their names need explicit coverage too.
+  - AND,((NETWORK,UDP),(DST-PORT,443),(PROCESS-NAME,com.android.vending)),REJECT
+  - AND,((NETWORK,UDP),(DST-PORT,443),(PROCESS-NAME,com.google.android.gms)),REJECT
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,gvt1.com)),REJECT
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,gvt2.com)),REJECT
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,gvt3.com)),REJECT
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,ggpht.com)),REJECT
+  - AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-SUFFIX,gstatic.com)),REJECT
   # FixedExit in this recipe is TCP-only. Never let tailnet UDP fall through to Entry/DIRECT.
   - AND,((NETWORK,UDP),(DOMAIN-SUFFIX,ts.net)),REJECT
   - AND,((NETWORK,UDP),(IP-CIDR,100.64.0.0/10)),REJECT
@@ -101,6 +118,13 @@ rules:
   - AND,((NETWORK,UDP),(GEOSITE,cn)),DIRECT
   - AND,((NETWORK,UDP),(GEOIP,CN)),DIRECT
   - NETWORK,UDP,Entry
+  - PROCESS-NAME,com.android.vending,Google Play
+  - PROCESS-NAME,com.google.android.gms,Google Play
+  - DOMAIN-SUFFIX,gvt1.com,Google Play
+  - DOMAIN-SUFFIX,gvt2.com,Google Play
+  - DOMAIN-SUFFIX,gvt3.com,Google Play
+  - DOMAIN-SUFFIX,ggpht.com,Google Play
+  - DOMAIN-SUFFIX,gstatic.com,Google Play
   - PROCESS-NAME,com.anthropic.claude,Claude
   - PROCESS-NAME,com.openai.chatgpt,GPT
   # The intake host is documented for Claude Code, and follows the Claude policy here.

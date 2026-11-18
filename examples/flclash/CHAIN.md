@@ -16,7 +16,7 @@ cp android-chain.example.yaml android-chain.local.yaml
 
 机场改善手机到 VPS 的接入路径；目标网站看到的是自建 VPS 的公网 IP。机场能看到它在连接 VPS，HTTPS 业务内容仍受自身加密保护。链式多了一跳，是否更快取决于实际线路；客户端显示的延迟不一定包含最终网站的完整耗时。
 
-模板只保留四个选择组：
+模板保留五个手动选择组：
 
 | 组 | 作用 |
 | --- | --- |
@@ -24,6 +24,7 @@ cp android-chain.example.yaml android-chain.local.yaml
 | `FixedExit` | 选自建 VPS 节点，节点通过 `Entry` 拨号；没有机场或直连自动兜底 |
 | `Claude` | 默认 `FixedExit`，需要时可手动切 `Entry`；切换会改变该业务出口 |
 | `GPT` | 与 `Claude` 独立选择，默认 `FixedExit` |
+| `Google Play` | Google 域名、商店与下载 CDN 的 TCP，默认 `Entry`，可手动切 `FixedExit` |
 
 国内与局域网直连，视频流媒体走机场；普通海外 TCP、业务 DNS 和明确的固定出口规则走 VPS。其他海外 UDP 走机场，详见第 4 节。
 
@@ -105,7 +106,7 @@ proxy-providers:
 1. 拦截 Claude 安卓包名 `com.anthropic.claude` 与 Claude/Anthropic 域名的 UDP，让支持回退的连接改走 TCP。
 2. 保持 Tailscale 目标 UDP 拒绝连接，因为本教程的固定 VPS 路径未启用 UDP。
 3. 局域网和国内其他 UDP 直连，其他海外 UDP 明确交给 `Entry`。
-4. TCP 再按 Claude、GPT、固定出口和流媒体等规则分流。
+4. TCP 再按 Claude、GPT、Google Play、固定出口和流媒体等规则分流。Google/Play 的 UDP/443 也专门拦截，让支持回退的 QUIC 连接改用 TCP；其他 Google UDP 明确走机场。
 
 没有全局 `NETWORK,UDP,REJECT`，也不会因为某个节点未启用 UDP 就假设它能透明回退。ChatGPT 语音、其他通话或游戏能否恢复，还取决于所选机场节点的 UDP 能力。海外 UDP 的最终出口是机场，**不保证与 VPS 的 TCP 出口一致**；不要把这版称为「所有流量统一出口」。
 
@@ -116,6 +117,24 @@ proxy-providers:
 `http-intake.logs.us5.datadoghq.com` 是 Claude Code 官方网络文档列出的运行遥测端点。本模板显式把它的 TCP 请求交给 `Claude` 组；对应 UDP 先被 Claude 专属规则拒绝。旧模板的 `DOMAIN-SUFFIX,datadoghq.com,Identity` 已覆盖它，精确规则是为了让它跟随独立的 Claude 选择。
 
 文档确认的是 Claude Code 的用途，不能据此认定所有 Claude 客户端都调用它。它属于可选遥测；如需要在 Claude Code 关闭非必要流量，可使用官方的 `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`，无需把整个 Datadog 服务拒绝连接。
+
+### Google Play 更新一直「等待中」
+
+一次 Android 实测中，`play.googleapis.com` 已走代理，但 `services.googleapis.cn` 命中 `GeoSite/cn → DIRECT`，并持续出现 TCP `i/o timeout`。补齐 Google 域名代理后，用户确认更新恢复。遇到同样现象，先看日志中的具体域名、命中规则和超时，不要只看商店首页能不能打开。
+
+新版模板在国内直连规则之前加了：
+
+```yaml
+- AND,((NETWORK,UDP),(DST-PORT,443),(DOMAIN-KEYWORD,google)),REJECT
+- AND,((NETWORK,UDP),(DOMAIN-KEYWORD,google)),Entry
+- DOMAIN-KEYWORD,google,Google Play
+```
+
+所有域名中含 `google` 的 TCP 都交给 `Google Play` 组，包括 `googleapis.cn`、`googleusercontent.com`、`googlevideo.com`；因此 Google 视频域名也优先跟随这个组。默认选 `Entry`，需要时可手动切 `FixedExit`。其他 Google UDP 仍走机场，UDP/443 则尝试让应用回退 TCP。
+
+不含 `google` 的 `gvt1.com`、`gvt2.com`、`gvt3.com`、`ggpht.com`、`gstatic.com` 另有显式规则；商店 `com.android.vending` 和 Google Play 服务 `com.google.android.gms` 也补包名规则。这些包含共享服务域名，不仅影响商店本身。Google 域名例外必须放在 `GEOSITE,cn,DIRECT` 等国内规则之前，晚放仍会先命中直连。
+
+导入后先保持 `Google Play → Entry`，确认商店和 Google Play 服务都在 VPN 接管范围内，取消等待中的任务、强行停止商店后重开，只试更新一个 App。日志中的 `services.googleapis.cn` 应命中 `Google Play`，不再显示 `GeoSite/cn → DIRECT`。若仍失败，再对照组内两个出口的连接记录；先不用清除 Google Play 服务数据。
 
 ## 5. DNS、手机 VPN 与 Tailscale
 
